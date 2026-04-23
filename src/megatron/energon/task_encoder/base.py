@@ -795,7 +795,8 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             rotation_lengths[i] += rotation_lengths[i - 1]
         worker_rotation_offsets = [
             rotation_length % global_workers for rotation_length in [0] + rotation_lengths[:-1]
-        ]
+        ] #作用是将额外剩余的样本公平的分配到各个worker上，如果一个数据集有1001个样本，1001%4=1，那么这次多出来的1个样本由于offset=0，所以优先分配给worker0，但是后续为了均匀分配应该跳过worker0，所以之后offset=1，也就是之后剩余的额外样本优先分配给worker1，以此类推，大家轮着处理多出来的样本
+
 
         if blend_mode == DatasetBlendMode.DATASET_WEIGHT:
             assert repeat, (
@@ -853,7 +854,8 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             ]
             # Already repeating the inner datasets, so no need to repeat again
             repeat = False
-
+            
+        #这里的RepeatDataset（重复样本）/ShuffleBufferDataset（打乱样本顺序）/MapDataset（样本转换）/BatchDataset（打包成批次）/EpochizeDataset都是wrapper组件，为原始数据集添加新功能。
         if len(inner_datasets) > 1:
             # The worker offset for each dataset is the cumsum of the dataset lengths, but modulo the
             # global number of workers.
