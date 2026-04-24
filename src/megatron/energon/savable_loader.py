@@ -1322,7 +1322,7 @@ class BasicDataLoader(DataLoader[T], Generic[T]):
                 )
 
             try:
-                for worker_id, sample_idx, sample in iterator:
+                for worker_id, sample_idx, sample in iterator: #for循环对于迭代器MultiProcessingDataLoaderIter是先执行__iter__方法再执行__next__方法
                     # If the next sample will be from the first worker, we can safely resume
                     if self.worker_config.should_log(level=1):
                         keys = default_get_batch_keys(sample)
@@ -1358,7 +1358,7 @@ class BasicDataLoader(DataLoader[T], Generic[T]):
                         }
                     )
 
-        return _inner_generator(super().__iter__())
+        return _inner_generator(super().__iter__()) #_inner_generator的返回值是一个生成器，这里BasicDataLoader的基类是Pytorch的DataLoader，super().__iter__()返回的是迭代器MultiProcessingDataLoaderIter
 
     def config(self):
         """Get the configuration, which defines the dataset. Useful in conjunction with `save_state`
