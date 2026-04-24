@@ -108,7 +108,7 @@ class SimpleSavableDatasetWrapper(BaseWrapperDataset[T, Tuple[int, int, T]], Gen
             self.worker_config.worker_activate(self._sample_index, cache_pool=self.cache_pool)
             worker_active = True
             try:
-                for src_data in self.dataset:
+                for src_data in self.dataset:#针对wrapper数据集嵌套获取数据
                     self.worker_config.worker_deactivate()
                     worker_active = False
                     sample_index = self._sample_index
