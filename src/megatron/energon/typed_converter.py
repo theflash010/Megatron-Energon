@@ -548,7 +548,7 @@ class JsonParser:
     ) -> TType:
         """
         Converts raw data (i.e. dicts, lists and primitives) to typed call arguments.
-        Validates that python typing matches.
+        Validates that python typing matches. #本质上是函数调用，不过先做了一些类型检查和获取参数
 
         Usage::
 
@@ -567,7 +567,7 @@ class JsonParser:
         Returns:
             The return value of `fn`
         """
-        parameters = list(inspect.signature(fn).parameters.items())
+        parameters = list(inspect.signature(fn).parameters.items())#获取函数签名（函数签名 = 参数列表 + 类型注解 + 默认值 + 参数种类 + 返回值类型）
         if inspect.isclass(fn):
             init_sig = getattr(fn, "__init__", None)
             if init_sig is not None:

@@ -30,7 +30,7 @@ def load_dataset(
         )
         return mds
     path = EPath(path)
-    ds_type = get_dataset_type(path)
+    ds_type = get_dataset_type(path) #确定数据集类型（WEBDATASET，JSONL, Metadataset, Filesystem）
     if ds_type == EnergonDatasetType.METADATASET:
         mds = load_config(
             path,

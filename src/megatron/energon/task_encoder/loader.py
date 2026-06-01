@@ -154,7 +154,7 @@ def get_train_dataset(
         The dataloader.
     """
 
-    loader = load_dataset(path, **_split_kwargs(kwargs))
+    loader = load_dataset(path, **_split_kwargs(kwargs)) #判断数据集类型并初始化对应类型的dataloader
     _split_deprecated_dataset_kwargs(kwargs, task_encoder, worker_config)
 
     datasets = loader.get_datasets(
