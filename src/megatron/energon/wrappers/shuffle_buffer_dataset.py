@@ -30,7 +30,7 @@ class ShuffleBufferDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sam
     ):
         """Create a shuffle buffer for the dataset."""
         super().__init__(dataset, worker_config=worker_config)
-        self.size = size
+        self.size = size #Shuffle 缓冲区的大小。使用蓄水池随机采样算法（Reservoir Sampling）来打乱数据顺序，size决定蓄水池的容量。
         self.reset_state_own()
 
     def reset_state_own(self) -> None:

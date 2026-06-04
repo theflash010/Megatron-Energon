@@ -729,9 +729,9 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
         self, dataset: LoadedDataset, worker_rotation_offset: int, worker_config: WorkerConfig
     ) -> SavableDataset[T_sample]:
         """Loads a train dataset, optionally cooking the samples."""
-        if dataset.dataset.__sample_type__ == CrudeSample:
+        if dataset.dataset.__sample_type__ == CrudeSample: #对于CrudeSample类型的数据集，额外进行cook包装
             return self.build_cook_crude_sample(
-                dataset.dataset.build(worker_rotation_offset=worker_rotation_offset),
+                dataset.dataset.build(worker_rotation_offset=worker_rotation_offset),#先正常build，build之后只有底层数据集和decoder的转换逻辑封装
                 worker_config=worker_config,
                 subflavors=dataset.dataset.subflavors,
                 get_primary_aux=dataset.dataset.as_file_store,
@@ -739,7 +739,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             )
         else:
             assert dataset.aux is None, "Aux is not supported for non-crude datasets."
-            return dataset.dataset.build(worker_rotation_offset=worker_rotation_offset)
+            return dataset.dataset.build(worker_rotation_offset=worker_rotation_offset)#普通数据集直接build，build之后只有底层数据集和decoder的转换逻辑封装
 
     def build_encode_sample(
         self,
@@ -843,7 +843,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             inner_datasets = [
                 (
                     RepeatDataset(
-                        self._load_dataset(
+                        self._load_dataset( #可能是CrudeWebdataset（本质也是数据集工厂），或者默认的StandardWebdatasetFactory，还有其他类型
                             dataset, worker_rotation_offset, worker_config=worker_config
                         ),
                         worker_config=worker_config,

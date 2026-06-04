@@ -43,7 +43,7 @@ def load_config(
     else:
         # Read the config from a file
         with path.open("rb") as f:
-            data: dict = load_yaml(f) #加载config文件(dataset.yaml)，如果是CrudeWebdataset，那yaml中就会有__class__字段，后续raw_to_instance就会修改default_type为CrudeWebdataset
+            data: dict = load_yaml(f) #加载config文件(dataset.yaml)，如果是CrudeWebdataset，那yaml中就会有__class__字段（__class__: CrudeWebdataset），后续raw_to_instance就会修改default_type为CrudeWebdataset
 
     if default_kwargs is not None:
         new_data = default_kwargs.copy()
