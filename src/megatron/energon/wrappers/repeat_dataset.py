@@ -28,7 +28,7 @@ class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
         restart: bool = True,
         worker_config: WorkerConfig,
     ):
-        """Construct a RepeatDataset.
+        """Construct a RepeatDataset. 重复数据集逻辑
 
         Args:
             dataset: The input dataset to repeat.
@@ -38,8 +38,8 @@ class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
             worker_config: Configuration for the workers.
         """
         super().__init__(dataset, worker_config=worker_config)
-        self.repeats = repeats
-        self.restart = restart
+        self.repeats = repeats #重复次数
+        self.restart = restart #是否重新启动
 
         self.reset_state_own()
 

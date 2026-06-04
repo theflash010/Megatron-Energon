@@ -159,14 +159,14 @@ class BaseWebdatasetFactory(
             worker_config=self.worker_config, # 3. Worker 配置
             shuffle_over_epochs=self.shuffle_over_epochs if self.training else None, #每隔多少个epoch，整体 shuffle 一次
             parallel_slice_iters=parallel_shard_iters,
-        )
+        ) #WebdatasetSampleLoaderDataset 是最底层的数据集类，直接与 ITarReader 交互读取 tar 文件。
         return MapDataset(
             dataset,
-            self._load_sample_raw,
-            stateless_map_fn=True,
-            map_fn_config=self.config,
+            self._load_sample_raw, #megatron.energon.flavors.webdataset.standard_webdataset.StandardWebdatasetFactory，包装处理逻辑，主要就是调用decoder对原始数据进行解码
+            stateless_map_fn=True, #告诉系统这个转换函数是纯函数（无内部状态，可安全并行）
+            map_fn_config=self.config, #传给 _load_sample_raw 的配置（如 decoder、transform 配置）
             worker_config=self.worker_config,
-        )
+        ) #MapDataset 就是包装层，在底层数据集外添加转换逻辑。
 
     def as_file_store(self) -> "FileStore":
         from megatron.energon.cache.file_store import WebdatasetFileStore

@@ -176,7 +176,7 @@ def get_train_dataset(
         shuffle_buffer_size=shuffle_buffer_size,
         blend_mode=datasets.blend_mode,
         repeat=repeat,
-    )#在这里构建真正的数据集（验证）
+    )#在这里构建真正的数据集
 
 
 def get_val_dataset(
