@@ -789,16 +789,16 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             if isinstance(dataset.dataset, CrudeWebdataset):
                 assert self.cookers, "CrudeWebdataset found, but no cookers registered."
 
-        global_workers = max(1, worker_config.num_workers) * worker_config.world_size
-        rotation_lengths = [len(dataset.dataset) for dataset in datasets]
+        global_workers = max(1, worker_config.num_workers) * worker_config.world_size #num_workers是单个 DP rank 的 dataloader worker 数。 world_sizeDP size（数据并行进程数）。 global_workers是全局 worker 总数
+        rotation_lengths = [len(dataset.dataset) for dataset in datasets] #获取每个数据集的样本数
         for i in range(1, len(rotation_lengths)):
-            rotation_lengths[i] += rotation_lengths[i - 1]
+            rotation_lengths[i] += rotation_lengths[i - 1] #前缀和
         worker_rotation_offsets = [
             rotation_length % global_workers for rotation_length in [0] + rotation_lengths[:-1]
-        ] #作用是将额外剩余的样本公平的分配到各个worker上，如果一个数据集有1001个样本，1001%4=1，那么这次多出来的1个样本由于offset=0，所以优先分配给worker0，但是后续为了均匀分配应该跳过worker0，所以之后offset=1，也就是之后剩余的额外样本优先分配给worker1，以此类推，大家轮着处理多出来的样本
+        ] #作用是将额外剩余的样本公平的分配到各个worker上，如果一个数据集有1001个样本，1001%4=1，那么这次多出来的1个样本由于offset=0，所以优先分配给worker0，但是后续为了均匀分配应该跳过worker0，所以之后offset=1，也就是之后剩余的额外样本优先分配给worker1，以此类推，大家轮着处理多出来的样本。这里的worker_rotation_offsets决定第i个数据集从哪个worker开始分配
 
 
-        if blend_mode == DatasetBlendMode.DATASET_WEIGHT:
+        if blend_mode == DatasetBlendMode.DATASET_WEIGHT: #每个数据集无限循环 按权重采样 
             assert repeat, (
                 "If repeat is False, the datasets can only be repeated or have no mode. Cannot blend with dataset weights."
             )
@@ -818,7 +818,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             repeat = False
         elif blend_mode == DatasetBlendMode.SAMPLE_REPETITIONS or (
             not repeat and blend_mode == DatasetBlendMode.NONE
-        ):
+        ): # 样本重复，但是每个数据集的样本重复次数可以指定。
             inner_datasets = [
                 (
                     (
@@ -839,7 +839,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                 )
                 for dataset, worker_rotation_offset in zip(datasets, worker_rotation_offsets)
             ]
-        else:
+        else: #所有数据集无限循环，权重相等（都是 1.0）
             inner_datasets = [
                 (
                     RepeatDataset(
