@@ -431,10 +431,10 @@ class ShardInfosITarReader(ITarReader[int]):
 
         super().__init__(
             base_path=base_path,
-            tar_filenames=tar_filenames,
-            tar_filepaths=tar_filepaths,
+            tar_filenames=tar_filenames, #tar 文件名列表（不含路径）
+            tar_filepaths=tar_filepaths, #tar 文件的完整路径列表
             part_filter=part_filter,
-            itar_cache_size=itar_cache_size,
+            itar_cache_size=itar_cache_size, #最多缓存多少个 tar 文件句柄（LRU）
             sample_filter=sample_filter,
             disable_cache=disable_cache,
         )

@@ -21,25 +21,25 @@ class Sharder:
         Returns the starting index of each slice (excluding the end_offset)."""
         if (
             max_samples_per_sequence is not None
-            and end_offset - start_offset > max_samples_per_sequence * 1.5
+            and end_offset - start_offset > max_samples_per_sequence * 1.5 #超过阈值对shard（也就是单个tar文件）进行切分
         ):
             # Split the shard into slices of max_samples_per_sequence (more or less)
-            slice_count = max(round((end_offset - start_offset) / max_samples_per_sequence), 1)
-            samples_per_sequence = (end_offset - start_offset) / slice_count
+            slice_count = max(round((end_offset - start_offset) / max_samples_per_sequence), 1) #按照每个sequence的样本数量为max_samples_per_sequence进行切分，一共有slice_count个sequence
+            samples_per_sequence = (end_offset - start_offset) / slice_count #每个sequence的样本数量
             # Note this must include the end offset as well, so slice_count + 1 steps
             return tuple(
-                start_offset + int(slice * samples_per_sequence) for slice in range(slice_count)
+                start_offset + int(slice * samples_per_sequence) for slice in range(slice_count) #值返回每个sequence的起始样本索引，不包括这个shard的末尾边界
             )
         else:
-            return (start_offset,)
+            return (start_offset,) #不切分
 
     @classmethod
     def _split_shards(
         cls,
-        shard_cumsums: np.ndarray,
-        offsets: Sequence[int],
+        shard_cumsums: np.ndarray, #每个 shard 的起止偏移 [0, shard1_end, shard2_end, ...]
+        offsets: Sequence[int], #worker 的样本范围 [start, end, ...]
         *,
-        max_samples_per_sequence: Optional[int],
+        max_samples_per_sequence: Optional[int], #每个 slice 最大样本数
     ) -> Generator[Sequence[int], None, None]:
         """
         Splits the shards into multiple lists based on the offsets. The first offset is the start
@@ -61,22 +61,22 @@ class Sharder:
         for start_offset, end_offset in zip(offsets, offsets[1:]):
             # Find shard idx for end
             end_index = start_index
-            while end_index + 1 < len(shard_cumsums) and end_offset > shard_cumsums[end_index + 1]:
+            while end_index + 1 < len(shard_cumsums) and end_offset > shard_cumsums[end_index + 1]: #不断训练直到end_offset位于end_index这个shard内
                 end_index += 1
-            if start_index == end_index:
+            if start_index == end_index: #起始index相同说明这个worker的样本都在同一个shard内
                 yield (
-                    *cls._split_shard(
+                    *cls._split_shard( #获取当前shard(包含样本范围是start_offset, end_offset)在切分为sequence之后的起始样本索引
                         start_offset=start_offset,
                         end_offset=end_offset,
                         max_samples_per_sequence=max_samples_per_sequence,
                     ),
-                    end_offset,
+                    end_offset, #添加shard的末尾边界
                 )
-            else:
+            else:#起始index不相同说明这个worker的样本跨越在多个shard内
                 # Middle is the original shards, start and end get an offset/length
                 yield (
                     *(
-                        cls._split_shard(
+                        cls._split_shard(#这里处理当前worker包含的第一个shard，获取其在切分为sequence之后的起始样本索引
                             start_offset=start_offset,
                             end_offset=shard_cumsums[start_index + 1],
                             max_samples_per_sequence=max_samples_per_sequence,
@@ -90,20 +90,20 @@ class Sharder:
                             shard_cumsums[start_index + 1 : end_index],
                             shard_cumsums[start_index + 2 : end_index + 1],
                         )
-                        for offset in cls._split_shard(
+                        for offset in cls._split_shard( #这里处理当前worker包含的中间shard，获取其在切分为sequence之后的起始样本索引
                             start_offset=inner_shard_start,
                             end_offset=inner_shard_end,
                             max_samples_per_sequence=max_samples_per_sequence,
                         )
                     ),
-                    *cls._split_shard(
+                    *cls._split_shard( #这里处理当前worker包含的最后一个shard（不一定是完整的shard，可能是shard的一部分），获取其在切分为sequence之后的起始样本索引
                         start_offset=shard_cumsums[end_index],
                         end_offset=end_offset,
                         max_samples_per_sequence=max_samples_per_sequence,
                     ),
-                    end_offset,
+                    end_offset, #添加worker处理的末尾边界样本下标
                 )
-            start_index = end_index
+            start_index = end_index #更新起始index为当前处理的末尾index，方便下一个worker的处理
 
     @classmethod
     def _split_slices(
@@ -200,14 +200,14 @@ class Sharder:
         # Note that the global number of workers intentionally stays the same if you
         # divide the number of ranks by N, and multiply the number of workers per rank by N.
         # This allows to reproduce the same global batches with a different number of ranks.
-        total_samples = end_samples - start_samples
+        total_samples = end_samples - start_samples #samples数量
 
-        num_workers = max(1, worker_config.num_workers)
+        num_workers = max(1, worker_config.num_workers) #每个dp rank的worker数量
 
-        global_workers = num_workers * worker_config.world_size
+        global_workers = num_workers * worker_config.world_size #global_workers 是所有dp rank的worker总数
 
-        min_samples_per_worker = int(total_samples / global_workers)
-        num_workers_with_more_samples = total_samples % global_workers
+        min_samples_per_worker = int(total_samples / global_workers) #均分的话，每个worker的样本数量（不包括余数）
+        num_workers_with_more_samples = total_samples % global_workers #需要多分配一个样本的worker数量
 
         # We are going to compute the samples assigned to each worker on the current rank.
         # This is done in multiple steps.
@@ -225,13 +225,13 @@ class Sharder:
             if (
                 global_worker_idx - rotation_offset + global_workers
             ) % global_workers < num_workers_with_more_samples:
-                # This worker gets one more sample
+                # This worker gets one more sample 这次轮到需要多加一个样本的worker
                 num_samples_per_global_worker.append(min_samples_per_worker + 1)
             else:
-                # This worker gets the minimum number of samples
+                # This worker gets the minimum number of samples 不需要添加样本的worker
                 num_samples_per_global_worker.append(min_samples_per_worker)
 
-        # 2. Permute the number of samples per global worker
+        # 2. Permute the number of samples per global worker 位反转优化，不会对offset造成影响，只会改变分配给不同worker的样本数量，如果没有余数就无所谓
         worker_bitrev_seq = cls._generalized_bit_reversal(global_workers)
 
         # The worker_bitrev_seq is the order in which any remainder samples shall
@@ -249,13 +249,13 @@ class Sharder:
         num_samples_per_global_worker = new_num_samples_per_global_worker
 
         # 3. Compute the global worker sample start and end indices
-        global_worker_sample_split_offsets = [start_samples]
+        global_worker_sample_split_offsets = [start_samples] #计算所有worker的样本起始offset
         cur_offset = start_samples
         for global_worker_idx in range(global_workers):
             cur_offset += num_samples_per_global_worker[global_worker_idx]
             global_worker_sample_split_offsets.append(cur_offset)
 
-        # 4. Now we extract the local rank's worker ranges
+        # 4. Now we extract the local rank's worker ranges 提取当前dp rank 的 local worker 的样本起始offset
         local_worker_sample_split_offsets = global_worker_sample_split_offsets[
             worker_config.rank * num_workers : (worker_config.rank + 1) * num_workers + 1
         ]
@@ -336,7 +336,7 @@ class Sharder:
         Returns:
             The shards for the current rank and all workers
         """
-        end_samples = sum(shard.count for shard in shards)
+        end_samples = sum(shard.count for shard in shards) #计算shards包含的样本总数
         if subset is not None:
             start_samples, end_samples = subset.compute_subset(end_samples)
         else:
@@ -347,18 +347,18 @@ class Sharder:
             end_samples,
             worker_config,
             rotation_offset=rotation_offset,
-        )
+        )#提取当前dp rank 的 local worker 的样本起始offset，是样本的下标，不是shards的。如：[0, 11250, 22500, 33750, 45000]
 
-        shard_cumsums = np.cumsum([0] + [shard.count for shard in shards])
+        shard_cumsums = np.cumsum([0] + [shard.count for shard in shards]) #确定每个 shard 的起止位置。 如shard_cumsums = [0, 1000, 3000, 4500]
 
         return tuple(
             # Filter out any empty shards for this worker
-            cls._clean_offsets(offsets)
+            cls._clean_offsets(offsets)#过滤空切片，移除连续重复的偏移点，如offsets = [0, 500, 500, 1000, 1000, 1500]，会输出(0, 500, 1000, 1500)
             for offsets in cls._split_shards(
                 shard_cumsums,
                 local_worker_sample_split_offsets,
                 max_samples_per_sequence=max_samples_per_sequence,
-            )
+            )#每个for循环，获取一个worker处理的shard在切分为sequence（每个sequence是max_samples_per_sequence个样本）之后的起始样本索引和末尾样本索引。返回的 offsets 如：[[0, 1000], [1000, 2000], [2000, 3000]]
         )
 
     @classmethod

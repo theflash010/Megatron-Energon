@@ -129,7 +129,7 @@ class BaseWebdatasetFactory(
         if self.parallel_shard_iters is None:
             if self.training:
                 # 16 seems to be a good choice since we don't want too many file handles open
-                parallel_shard_iters = 16
+                parallel_shard_iters = 16 #每个 worker 内部用 parallel_shard_iters=16 来并行读取多个 shard 文件，充分利用 I/O
             else:
                 parallel_shard_iters = 1
         else:
@@ -141,23 +141,23 @@ class BaseWebdatasetFactory(
             max_samples_per_sequence=self.max_samples_per_sequence,
             rotation_offset=worker_rotation_offset,
             subset=self.subset,
-        )
+        )#获取每一个worker处理的shard在切分为sequence（每个sequence是max_samples_per_sequence个样本）之后的起始样本索引和末尾样本索引
         if DEBUG_SHARD_PRINT:
             _print_shard_slices(self.worker_config, self.shards, workers_sample_slice_offsets)
 
         itar_reader = ShardInfosITarReader(
-            self.path,
-            self.shards,
-            part_filter=self.part_filter,
-            sample_filter=self.sample_filter,
-            itar_cache_size=parallel_shard_iters,
-        )
+            self.path, # 数据路径
+            self.shards,  # ShardInfo 列表
+            part_filter=self.part_filter, # 样本部分过滤函数
+            sample_filter=self.sample_filter, # 样本过滤函数
+            itar_cache_size=parallel_shard_iters, #itar_cache_size 控制同时打开的文件数（LRU）
+        )#ftar文件读取对象，具有缓存功能
 
         dataset = WebdatasetSampleLoaderDataset(
-            join_readers=[itar_reader],
-            workers_sample_slice_offsets=workers_sample_slice_offsets,
-            worker_config=self.worker_config,
-            shuffle_over_epochs=self.shuffle_over_epochs if self.training else None,
+            join_readers=[itar_reader], # 1. Tar 读取器
+            workers_sample_slice_offsets=workers_sample_slice_offsets, # 2. 每个 worker 的切片偏移
+            worker_config=self.worker_config, # 3. Worker 配置
+            shuffle_over_epochs=self.shuffle_over_epochs if self.training else None, #每隔多少个epoch，整体 shuffle 一次
             parallel_slice_iters=parallel_shard_iters,
         )
         return MapDataset(

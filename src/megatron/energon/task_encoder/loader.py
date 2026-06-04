@@ -165,7 +165,7 @@ def get_train_dataset(
         shuffle_over_epochs_multiplier=shuffle_over_epochs_multiplier,
         decoder=task_encoder.decoder,
         **kwargs,
-    )#利用datasetloader初始化数据集（本质上是一个数据集工厂），类型是<megatron.energon.flavors.webdataset.standard_webdataset.StandardWebdatasetFactory object at 0x7f7488319760>
+    )#利用datasetloader初始化数据集，本质上是一个数据集工厂（decoder是其成员，但cooker不是，而decoder和cooker都是taskencoder的成员），类型是<megatron.energon.flavors.webdataset.standard_webdataset.StandardWebdatasetFactory object at 0x7f7488319760>
     return task_encoder.build_train_datasets(
         datasets=datasets.datasets,
         worker_config=worker_config,
