@@ -139,7 +139,7 @@ class JsonParser:
                     _stage,
                 )
         else:
-            if "__class__" in kwargs: #CrudeWebdataset的dataset.yaml中指定的__class__在这里会覆盖之前的inst_type
+            if "__class__" in kwargs: #如果CrudeWebdataset的dataset.yaml中指定的__class__=CrudeWebdataset，那在这里会覆盖之前的inst_type，即CrudeWebdataset（这个类本质上也是一个数据集工厂类）
                 object_name = kwargs.pop("__class__", None)
                 is_instantiating_class = True
                 is_calling_function = False

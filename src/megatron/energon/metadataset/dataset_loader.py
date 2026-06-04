@@ -31,7 +31,7 @@ class DatasetLoader(DatasetLoaderInterface):
     def post_initialize(self, mds_path: Optional[EPath] = None):
         pass
 
-    def get_dataset( #返回单个数据集
+    def get_dataset( #返回单个数据集工厂
         self,
         *,
         training: bool,
@@ -81,7 +81,7 @@ class DatasetLoader(DatasetLoaderInterface):
             **kwargs,
         )
 
-    def get_datasets( #返回多个数据集，套一层 LoadedDatasetList（当然这里的DatasetLoader只加载一个数据集，所以LoadedDatasetList里面只有一个数据集）
+    def get_datasets( #返回多个数据集工厂，套一层 LoadedDatasetList（当然这里的DatasetLoader只加载一个数据集工厂，所以LoadedDatasetList里面只有一个数据集工厂）
         self,
         *,
         training: bool,

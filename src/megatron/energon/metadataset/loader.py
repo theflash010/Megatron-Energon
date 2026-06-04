@@ -20,7 +20,7 @@ def load_dataset(
     path: Union[str, EPath, Path],
     **kwargs,
 ) -> DatasetLoaderInterface:
-    """Loads a (meta)dataset."""
+    """Loads a (meta)dataset. 其实没有加载数据集，只是根据数据集类型创建不同的datasetloader实例"""
 
     if isinstance(path, dict):
         mds = load_config(

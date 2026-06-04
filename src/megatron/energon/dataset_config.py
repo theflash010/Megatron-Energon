@@ -43,14 +43,14 @@ def load_config(
     else:
         # Read the config from a file
         with path.open("rb") as f:
-            data: dict = load_yaml(f) #加载config文件(dataset.yaml)
+            data: dict = load_yaml(f) #加载config文件(dataset.yaml)，如果是CrudeWebdataset，那yaml中就会有__class__字段，后续raw_to_instance就会修改default_type为CrudeWebdataset
 
     if default_kwargs is not None:
         new_data = default_kwargs.copy()
         new_data.update(data) #config文件的内容更准确，有些字段config中没有，所以用默认的kwargs覆盖config中的值；有些字段config中有，就使用config中的值
         data = new_data
 
-    return parser.raw_to_instance(data, default_type)
+    return parser.raw_to_instance(data, default_type)#构建实例
 
 
 T_sample = TypeVar("T_sample", covariant=True)
