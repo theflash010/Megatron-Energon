@@ -47,7 +47,7 @@ class DefaultGenericWebdatasetFactory(BaseWebdatasetFactory[T_sample], Generic[T
         assert (field_map is None) != (sample_loader is None), (
             "Either field_map or sample_loader must be provided."
         )
-        if sample_loader is not None:
+        if sample_loader is not None: #legacy方法，用sampler_loader
             assert part_filter is not None, (
                 "part_filter must be provided if sample_loader is provided."
             )
@@ -69,7 +69,7 @@ class DefaultGenericWebdatasetFactory(BaseWebdatasetFactory[T_sample], Generic[T
             else:
                 assert callable(part_filter)
             self._sample_loader = sample_loader
-        else:
+        else: #使用field_map
             assert field_map is not None
             assert part_filter is None
             # Split field map fields by json[field][field]
@@ -86,17 +86,17 @@ class DefaultGenericWebdatasetFactory(BaseWebdatasetFactory[T_sample], Generic[T
             )
             self._sample_loader = lambda sample: {
                 k: field_access(sample, v) for k, v in fields.items()
-            }
+            }#通过fields构建_sample_loader成员
             parts = set(access[0] for options in fields.values() for access in options)
-            part_filter = lambda part: part in parts
-        inner_sample_loader = self._sample_loader
+            part_filter = lambda part: part in parts #从所有字段访问路径中提取第一级（文件扩展名），生成过滤器。如parts={json, jpg}
+        inner_sample_loader = self._sample_loader # 保存原来的 loader
         self._sample_loader = lambda sample: {
-            "__key__": sample["__key__"],
-            **inner_sample_loader(sample),
+            "__key__": sample["__key__"], # 原始样本唯一标识
+            **inner_sample_loader(sample), # 用户数据（来自 field_map 或自定义 loader）
             "__restore_key__": sample["__restore_key__"],
-            "__subflavors__": self.subflavors,
-            "__sources__": sample["__sources__"],
-        }
+            "__subflavors__": self.subflavors,# 注入的元数据（如数据集来源、标签等）
+            "__sources__": sample["__sources__"], # 数据源信息
+        } # 替换为包装后的版本
         super().__init__(path, **kwargs, part_filter=part_filter)
         self.subflavors = subflavors or {}
 

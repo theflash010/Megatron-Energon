@@ -34,7 +34,7 @@ def _split_kwargs(kwargs: dict) -> dict:
 def _split_deprecated_dataset_kwargs(
     kwargs: dict, task_encoder: TaskEncoder, worker_config: WorkerConfig
 ) -> None:
-    """
+    """ 如果参数用的是旧版本参数，需要进行转换，包括decoder的参数
     This function takes deprecated kwargs to the get_train_dataset and get_val_dataset functions and splits them into the new decoder kwargs and the worker_config error handler.
 
     Args:
@@ -107,7 +107,7 @@ def _split_deprecated_dataset_kwargs(
 def get_train_dataset(
     path: Union[str, EPath, Path],
     *,
-    split_part: Union[Literal["train"], str] = "train",
+    split_part: Union[Literal["train"], str] = "train", #默认为“train”，因为这里是get_train_dataset
     worker_config: WorkerConfig,
     batch_size: Optional[int],
     batch_drop_last: bool = False,
@@ -116,7 +116,7 @@ def get_train_dataset(
     max_samples_per_sequence: Optional[int],
     virtual_epoch_length: int = 0,
     shuffle_over_epochs_multiplier: Optional[int] = 1,
-    task_encoder: TaskEncoder[Any, Any, Any, T] = DefaultTaskEncoder(),
+    task_encoder: TaskEncoder[Any, Any, Any, T] = DefaultTaskEncoder(), #初始化了taskencoder，decoder初始化在task_encoder中
     repeat: bool = True,
     **kwargs,
 ) -> SavableDataset[T]:
@@ -154,8 +154,8 @@ def get_train_dataset(
         The dataloader.
     """
 
-    loader = load_dataset(path, **_split_kwargs(kwargs)) #判断数据集类型并初始化对应类型的dataloader
-    _split_deprecated_dataset_kwargs(kwargs, task_encoder, worker_config)
+    loader = load_dataset(path, **_split_kwargs(kwargs)) #注意：这个loader并不是dataloader，而是datasetloader，是用于初始化dataset的（torch的dataloader是用于获取样本data的）。load_dataset判断数据集类型并初始化对应类型的datasetloader
+    _split_deprecated_dataset_kwargs(kwargs, task_encoder, worker_config)#旧参数转换
 
     datasets = loader.get_datasets(
         training=True,
@@ -165,7 +165,7 @@ def get_train_dataset(
         shuffle_over_epochs_multiplier=shuffle_over_epochs_multiplier,
         decoder=task_encoder.decoder,
         **kwargs,
-    )
+    )#利用datasetloader初始化数据集（本质上是一个数据集工厂），类型是<megatron.energon.flavors.webdataset.standard_webdataset.StandardWebdatasetFactory object at 0x7f7488319760>
     return task_encoder.build_train_datasets(
         datasets=datasets.datasets,
         worker_config=worker_config,
@@ -176,7 +176,7 @@ def get_train_dataset(
         shuffle_buffer_size=shuffle_buffer_size,
         blend_mode=datasets.blend_mode,
         repeat=repeat,
-    )
+    )#在这里构建真正的数据集（验证）
 
 
 def get_val_dataset(

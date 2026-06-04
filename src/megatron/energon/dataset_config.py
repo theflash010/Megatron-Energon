@@ -43,11 +43,11 @@ def load_config(
     else:
         # Read the config from a file
         with path.open("rb") as f:
-            data: dict = load_yaml(f)
+            data: dict = load_yaml(f) #加载config文件(dataset.yaml)
 
     if default_kwargs is not None:
         new_data = default_kwargs.copy()
-        new_data.update(data)
+        new_data.update(data) #config文件的内容更准确，有些字段config中没有，所以用默认的kwargs覆盖config中的值；有些字段config中有，就使用config中的值
         data = new_data
 
     return parser.raw_to_instance(data, default_type)
@@ -125,7 +125,7 @@ def get_dataset_from_config(
                 worker_config=worker_config,
                 **kwargs,
             ),
-            default_type=StandardWebdatasetFactory,
+            default_type=StandardWebdatasetFactory, #指定实例化dataset的类型为StandardWebdatasetFactory
         )
     elif ds_type == EnergonDatasetType.FILESYSTEM:
         raise ValueError("Filesystem datasets are only supported as auxiliary datasets. ")

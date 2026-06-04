@@ -38,9 +38,9 @@ class WebdatasetMeta:
     """Class for getting metadata from a webdataset."""
 
     sample_excludes: Set[str]
-    shards: List[ShardInfo]
-    split_part_files: List[str]
-    info_shard_files: List[str]
+    shards: List[ShardInfo] # 该 split 的文件列表（只有training）
+    split_part_files: List[str] # 该 split 的文件列表（只有training）
+    info_shard_files: List[str] # 所有 shard 文件列表（training+val）
 
     @staticmethod
     def from_config(
@@ -163,7 +163,7 @@ def get_dataset_type(path: EPath) -> EnergonDatasetType:
         if path.name.endswith(".jsonl"):
             return EnergonDatasetType.JSONL
         elif path.name.endswith(".yaml"):
-            return EnergonDatasetType.METADATASET
+            return EnergonDatasetType.METADATASET # yaml后缀的配置文件（比如混合数据集）
         else:
             return EnergonDatasetType.INVALID
     elif check_dataset_info_present(path):

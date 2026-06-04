@@ -95,7 +95,7 @@ class JsonParser:
         _path: str = "root",
         _stage: Tuple[int, ...] = (),
     ) -> TType:
-        """
+        """ #json反序列化，将json格式的配置文件转换为python对象，对象类型是inst_type，初始化参数是kawrgs。也可能实例化的是一个类（比如inst_type本身是Type[x]的话），即返回的也是类
         Try to import and instantiate a class from a dict with "__module__" and "__class__"/"__function__" keys.
 
         Args:
@@ -139,7 +139,7 @@ class JsonParser:
                     _stage,
                 )
         else:
-            if "__class__" in kwargs:
+            if "__class__" in kwargs: #CrudeWebdataset的dataset.yaml中指定的__class__在这里会覆盖之前的inst_type
                 object_name = kwargs.pop("__class__", None)
                 is_instantiating_class = True
                 is_calling_function = False
@@ -149,7 +149,7 @@ class JsonParser:
                 is_calling_function = True
             # Else case: It's a plain type, and nothing was passed, use the default cls
         if module_name is None or object_name is None:
-            cls = inst_type
+            cls = inst_type # 走这里会用 default_type=StandardWebdatasetFactory
         else:
             cls = self._resolve_object(
                 module_name,
@@ -159,7 +159,7 @@ class JsonParser:
                 is_callable,
                 is_instantiating_class,
                 is_calling_function,
-            )
+            )# module_name = "megatron.energon", object_name = "CrudeWebdataset" # ← 走这里，动态导入 CrudeWebdataset
 
             if is_type:
                 if isinstance(inst_type, type) and (
@@ -546,9 +546,9 @@ class JsonParser:
         fn: Callable[..., TType],
         allow_imports: bool = False,
     ) -> TType:
-        """
+        """ #本质上是函数调用，不过先做了一些类型检查和获取参数
         Converts raw data (i.e. dicts, lists and primitives) to typed call arguments.
-        Validates that python typing matches. #本质上是函数调用，不过先做了一些类型检查和获取参数
+        Validates that python typing matches. 
 
         Usage::
 
@@ -567,17 +567,17 @@ class JsonParser:
         Returns:
             The return value of `fn`
         """
-        parameters = list(inspect.signature(fn).parameters.items())#获取函数签名（函数签名 = 参数列表 + 类型注解 + 默认值 + 参数种类 + 返回值类型）
+        parameters = list(inspect.signature(fn).parameters.items())#获取fn函数签名
         if inspect.isclass(fn):
             init_sig = getattr(fn, "__init__", None)
             if init_sig is not None:
                 parameters = list(inspect.signature(init_sig).parameters.items())[1:]
         args = []
         kwargs = {}
-        if isinstance(raw_data, dict):
+        if isinstance(raw_data, dict):#将raw_data转换为函数fn所需的参数
             unused_args = raw_data.copy()
             for idx, (key, param) in enumerate(parameters):
-                t = Any if param.annotation is inspect.Parameter.empty else param.annotation
+                t = Any if param.annotation is inspect.Parameter.empty else param.annotation #获取参数的类型注解
                 if param.kind in (
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                     inspect.Parameter.KEYWORD_ONLY,
@@ -591,7 +591,7 @@ class JsonParser:
                         _path=key,
                         _stage=(idx,),
                     )
-                elif param.kind == inspect.Parameter.VAR_KEYWORD:
+                elif param.kind == inspect.Parameter.VAR_KEYWORD: #**kwargs（VAR_KEYWORD）在 Python 函数定义里必须是最后一个参数。走到这里的时候unused_args 里剩下的就是前面所有普通参数匹配完后的残余，一股脑全丢给 **kwargs，然后 clear() 清空
                     for arg_key, arg_val in unused_args.items():
                         kwargs[arg_key] = self.raw_to_typed(
                             arg_val, t, allow_imports, _path=key, _stage=(idx,)

@@ -19,7 +19,7 @@ from megatron.energon.worker import WorkerConfig
 
 @edataclass
 class DatasetLoader(DatasetLoaderInterface):
-    """Loads a dataset from a path."""     #只加载一个数据集的loader类型（其他类型，比如Metadataset加载多个数据集）
+    """Loads a dataset from a path."""     #只加载一个数据集的datasetloader类型（其他类型，比如Metadataset加载多个数据集）
 
     path: Union[str, EPath]
     split_part: Optional[str] = None

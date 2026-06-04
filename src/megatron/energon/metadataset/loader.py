@@ -31,7 +31,7 @@ def load_dataset(
         return mds
     path = EPath(path)
     ds_type = get_dataset_type(path) #确定数据集类型（WEBDATASET，JSONL, Metadataset, Filesystem）
-    if ds_type == EnergonDatasetType.METADATASET:
+    if ds_type == EnergonDatasetType.METADATASET:#混合数据集，实际上Metadataset也是一个datasetloader，父类是DatasetLoaderInterface
         mds = load_config(
             path,
             default_type=Metadataset,
@@ -40,7 +40,7 @@ def load_dataset(
         mds.post_initialize()
         return mds
     elif ds_type in (EnergonDatasetType.WEBDATASET, EnergonDatasetType.JSONL):
-        ds = DatasetLoader(path=path, **kwargs)
+        ds = DatasetLoader(path=path, **kwargs) #初始化DatasetLoader，父类也是DatasetLoaderInterface
         ds.post_initialize()
         return ds
     elif ds_type == EnergonDatasetType.FILESYSTEM:
