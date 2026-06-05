@@ -747,17 +747,17 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
         *,
         worker_config: WorkerConfig,
     ) -> SavableDataset[T_encoded_sample]:
-        """Applies the sample encoder to the dataset."""
-        if self._is_overridden(self.preencode_sample):
+        """Applies the sample encoder to the dataset.""" #这里encode有两种方案：第一种是preencode_sample + postencode_sample组合；第二种是encode_sample。  这里只有preencode和encode的封装逻辑（preencode对应第一组分支的第一部分，第二部分的postencode不在这里，是在build_batch里面嵌套了逻辑）（encode分支的话只有encode封装）
+        if self._is_overridden(self.preencode_sample):#判断是否重构了preencode
             pre_encode_fn = self.preencode_sample
             assert not self._is_overridden(
                 self.encode_sample, bases=(TaskEncoder, DefaultTaskEncoder)
             ), "Cannot have both pre- and post-encode functions defined."
-        elif self._is_overridden(self.encode_sample):
+        elif self._is_overridden(self.encode_sample):#是否重构了encode
             pre_encode_fn = self.encode_sample
         else:
-            pre_encode_fn = None
-        if pre_encode_fn is not None:
+            pre_encode_fn = None #如果preencode和encode都没有重构，那就让pre_encode_fn为None
+        if pre_encode_fn is not None: #只有pre_encode不为none，才会封装encode逻辑，这里的pre_encode不代表oreencode，只是这里转换逻辑的抽象，即可代表preencode，也可以代表encode
             dataset = MapDataset(
                 dataset,
                 pre_encode_fn,
@@ -871,7 +871,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             # Still need to repeat the dataset
             dataset = RepeatDataset(dataset, worker_config=worker_config)
         if shuffle_buffer_size is not None and shuffle_buffer_size > 1:
-            dataset = ShuffleBufferDataset(
+            dataset = ShuffleBufferDataset(#添加打乱逻辑
                 dataset,
                 size=shuffle_buffer_size,
                 worker_config=worker_config,
