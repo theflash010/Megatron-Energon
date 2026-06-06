@@ -501,7 +501,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
         if dataclasses.is_dataclass(result_type) and hasattr(result_type, "from_samples"):
             return result_type.from_samples(samples)
 
-        # Get dict of samples
+        # Get dict of samples 把样本列表转成按字段聚合的字典  samples = [{"a": 1, "b": 2}, {"a": 3, "b": 4}] 变成 list_samples = {"a": [1, 3], "b": [2, 4]}
         if isinstance(samples[0], dict):
             list_samples = {key: [sample[key] for sample in samples] for key in samples[0].keys()}
         elif is_dataclass(samples[0]):
@@ -530,7 +530,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             return list_samples
         elif dataclasses.is_dataclass(result_type) or issubclass(result_type, tuple):
             # DataClass or NamedTuple
-            return result_type(**list_samples)
+            return result_type(**list_samples) #将list_samples转换为 result_type类型的对象
         else:
             raise ValueError("Unrecognized result type.")
 
@@ -633,10 +633,10 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                 ),
             )
 
-            if self._is_overridden(self.encode_batch):
+            if self._is_overridden(self.encode_batch):#如果重写了 encode_batch 函数，进一步封装，这里的encode是对整个batch进行的encode，而不是每个sample
                 dataset = MapDataset(
                     dataset,
-                    self.encode_batch,
+                    self.encode_batch, #encode_batch函数
                     worker_config=worker_config,
                     stateless_map_fn=get_stateless(self.encode_batch),
                     failure_tolerance=get_failure_tolerance(
@@ -646,8 +646,8 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
         else:
             # No grouping is active
 
-            if batch_size is not None:
-                dataset = BatchDataset(
+            if batch_size is not None:#如果设置了batch_size，则进行batch操作
+                dataset = BatchDataset( #封装batch逻辑
                     dataset,
                     batch_size=batch_size,
                     batcher=self.batch,
@@ -659,7 +659,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                     ),
                 )
 
-                if self._is_overridden(self.encode_batch):
+                if self._is_overridden(self.encode_batch):#如果重写了 encode_batch 函数，进一步封装，这里的encode是对整个batch进行的encode，而不是每个sample
                     dataset = MapDataset(
                         dataset,
                         self.encode_batch,
@@ -1003,9 +1003,9 @@ class DefaultTaskEncoder(
     (by name) to your new type.
     """
 
-    _encoded_sample_type: Optional[Type[T_encoded_sample]]
-    _raw_batch_type: Optional[Type[T_raw_batch]]
-    _batch_type: Optional[Type[T_batch]]
+    _encoded_sample_type: Optional[Type[T_encoded_sample]] #encode_sample 后的样本类型
+    _raw_batch_type: Optional[Type[T_raw_batch]] #batch 后的batch类型
+    _batch_type: Optional[Type[T_batch]] #encode_batch 后的batch类型
 
     def __init__(
         self,
@@ -1082,7 +1082,7 @@ class DefaultTaskEncoder(
     def encode_batch(self, batch: T_raw_batch) -> Union[T_batch, Generator[T_batch, None, None]]:
         """Encode a batch of samples. The default implementation converts to the
         _encoded_batch_type."""
-        if self._batch_type is None or self._raw_batch_type == self._batch_type:
+        if self._batch_type is None or self._raw_batch_type == self._batch_type:#查看_batch_type是否为none，如果是，则直接返回batch，否则就对batch的类型进行转换
             return batch
         if is_dataclass(batch):
             fields = {field.name: getattr(batch, field.name) for field in dataclasses.fields(batch)}
