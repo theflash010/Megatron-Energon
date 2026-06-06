@@ -61,7 +61,7 @@ class GroupBatchDataset(
     """
 
     dataset: SavableDataset[T_batch_sample]
-    sample_group_key: Callable[[T_batch_sample], Tuple[Hashable, Optional[int]]]
+    sample_group_key: Callable[[T_batch_sample], Tuple[Hashable, Optional[int]]] #样本分group时候调用的判读函数。每来一个样本时调用，决定这个样本去哪个桶、桶里 batch 多大，具体逻辑可以看这个类__iter__的调用
     batcher: Callable[[List[T_batch_sample]], T_batch]
     drop_last: bool
     _group_key_sample_index: SampleIndex
@@ -151,31 +151,31 @@ class GroupBatchDataset(
             # for dbg_bucket_key, dbg_bucket in buckets.items():
             #     print(f"[wrk={worker_idx}, s={self._batch_sample_index.current_idx}] - Bucket [{dbg_bucket_key}{'*' if dbg_bucket_key == bucket_key else ''}] (bs={dbg_bucket.batch_size}, len(samples)={len(dbg_bucket.samples)}):\n", end="")
             #     dbg_bucket.samples.debug_print("    ")
-            batch_items, sample_restore_keys = bucket.samples.flush()
+            batch_items, sample_restore_keys = bucket.samples.flush() #获取这个bucket的所有样本
             # print(f"[wrk={worker_idx}, s={self._batch_sample_index.current_idx}] flushed: len(batch)={len(batch_items)} len(samples)={len(bucket.samples)}\n", end="")
             with self._batch_failure_handler.handle_errors(batch_items):
                 with self._batch_sample_index.ctx() as sample_idx:
-                    batch_sample = self.batcher(batch_items)
+                    batch_sample = self.batcher(batch_items) #调用定义的 batch 函数
                     assert not isinstance(batch_sample, Generator), (
                         f"Batcher {self.batcher} returned a generator, which is not supported for grouped batching yet."
                     )
                 self._batch_failure_handler.reset()
                 set_sample_restore_key(batch_sample, sample_idx, *sample_restore_keys, src=self)
-                yield batch_sample
+                yield batch_sample #生成器输出
 
         # Add samples to the buckets
         for sample in self.dataset:
             with self._group_key_failure_handler.handle_errors(sample):
                 with self._group_key_sample_index.ctx():
-                    bucket_key, batch_size = self.sample_group_key(sample)
+                    bucket_key, batch_size = self.sample_group_key(sample) #每个样本调用一次，获取这个样本属于的bucket key（可以是str名字，或者seqlen数字，只要是一个Hashable类型就行），以及这个bucket的batch size
                     assert (batch_size is None) != (self.fixed_batch_size is None), (
                         f"A sample in group for key {bucket_key} returned batch size {batch_size}, but fixed "
                         f"batch size is set to {self.fixed_batch_size}. One of the two should be None."
                     )
                     if self.fixed_batch_size is not None:
                         batch_size = self.fixed_batch_size
-            bucket = buckets.get(bucket_key)
-            if bucket is None:
+            bucket = buckets.get(bucket_key) #从已有的buckets中找有没有符合bucket_key的bucket
+            if bucket is None: #如果没有就新建bucket，加入到buckets中
                 assert batch_size is not None
                 buckets[bucket_key] = bucket = Bucket(
                     batch_size=batch_size,
@@ -185,14 +185,14 @@ class GroupBatchDataset(
                 assert bucket.batch_size == batch_size, (
                     f"Got different batch size for group {bucket_key}: {bucket.batch_size} != {batch_size}."
                 )
-            bucket.samples.append(sample)
+            bucket.samples.append(sample) #将这个样本加入到bucket中
             if bucket.samples.len_worker() >= bucket.batch_size:
                 yield from flush(bucket)
         # Flush out last samples
         if not self.drop_last:
-            for bucket in buckets.values():
+            for bucket in buckets.values(): #对每个bucket遍历
                 if bucket.samples.len_worker() > 0:
-                    yield from flush(bucket)
+                    yield from flush(bucket) #按照bucket的batch_size输出batch
         # Clear the buckets
         self._buckets.clear()
 

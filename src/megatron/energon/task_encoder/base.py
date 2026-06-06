@@ -575,7 +575,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
 
         dataset: SavableDataset[Any]
 
-        if packing_buffer_size is not None:
+        if packing_buffer_size is not None: #启用 packing（packing_buffer_size 不为 None）
             select_samples_to_pack_provided = self._is_overridden(self.select_samples_to_pack)
             pack_selected_samples_provided = self._is_overridden(self.pack_selected_samples)
 
@@ -583,18 +583,18 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                 "Both select_samples_to_pack and pack_selected_samples methods must be provided in the TaskEncoder when using packing_buffer_size"
             )
 
-            if self._is_overridden(self.postencode_sample):
+            if self._is_overridden(self.postencode_sample): #判断# 用户是否重写了 postencode
                 post_encode_fn = self.postencode_sample
             else:
                 post_encode_fn = None
 
             dataset = PackingDataset(
                 dataset,
-                buffer_size=packing_buffer_size,
-                pre_packer=self.select_samples_to_pack,
-                final_packer=self.pack_selected_samples,
+                buffer_size=packing_buffer_size, # 打包缓冲区大小
+                pre_packer=self.select_samples_to_pack, # 选择要打包的样本
+                final_packer=self.pack_selected_samples, # 实际打包逻辑
                 final_packer_stateless=get_stateless(self.pack_selected_samples),
-                sample_encoder=post_encode_fn,
+                sample_encoder=post_encode_fn, # postencode 作为打包内的逐样本编码
                 sample_encoder_stateless=True
                 if post_encode_fn is None
                 else get_stateless(post_encode_fn),
@@ -609,10 +609,10 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                 if post_encode_fn is None
                 else get_failure_tolerance(post_encode_fn, self.__default_failure_tolerance__),
             )
-        elif self._is_overridden(self.postencode_sample):
-            dataset = MapDataset(
+        elif self._is_overridden(self.postencode_sample): #未启用 packing 但重写了 postencode
+            dataset = MapDataset( #封装MapDataset
                 dataset,
-                self.postencode_sample,
+                self.postencode_sample, # postencode 作为MapDataset的映射函数
                 worker_config=worker_config,
                 stateless_map_fn=get_stateless(self.postencode_sample),
                 failure_tolerance=get_failure_tolerance(
@@ -620,12 +620,12 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                 ),
             )
 
-        if self._is_overridden(self.batch_group_criterion):
-            dataset = GroupBatchDataset(
+        if self._is_overridden(self.batch_group_criterion):#是否重构了batch_group
+            dataset = GroupBatchDataset(#这里封装group+batch逻辑，是两个逻辑，不是单一的group
                 dataset,
                 fixed_batch_size=batch_size,
-                sample_group_key=self.batch_group_criterion,
-                batcher=self.batch,
+                sample_group_key=self.batch_group_criterion,#这函数判断每个样本属于哪个group（内部叫bucket实现）
+                batcher=self.batch, #batch的逻辑
                 drop_last=batch_drop_last,
                 worker_config=worker_config,
                 failure_tolerance=get_failure_tolerance(
