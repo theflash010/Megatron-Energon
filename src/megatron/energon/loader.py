@@ -111,7 +111,7 @@ def get_loader(
 
     return BasicDataLoader(
         dataset,
-        prefetch_factor=prefetch_factor,
+        prefetch_factor=prefetch_factor, #给父类torch初始化的参数，代表每个 worker 预取的样本数，这里的样本在energon的逻辑下就是batch
         cache_pool=cache_pool,
         watchdog_timeout_seconds=watchdog_timeout_seconds,
         watchdog_initial_timeout_seconds=watchdog_initial_timeout_seconds,

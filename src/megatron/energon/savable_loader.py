@@ -1217,7 +1217,7 @@ class BasicDataLoader(DataLoader[T], Generic[T]):
         dataset: SavableDataset[T],
         gc_collect_every_n_steps: int = GC_DEFAULT_EVERY_N_ITER,
         gc_freeze_at_start: bool = True,
-        prefetch_factor: int = 2,
+        prefetch_factor: int = 2, #给父类torch初始化的参数，代表每个 worker 预取的样本数，这里的样本在energon的逻辑下就是batch
         cache_pool: Optional[CachePool] = None,
         watchdog_timeout_seconds: Optional[float] = 60,
         watchdog_initial_timeout_seconds: Optional[float] = None,
@@ -1246,27 +1246,27 @@ class BasicDataLoader(DataLoader[T], Generic[T]):
 
         self.id = SavableDataLoader.next_id()
 
-        dataset = WatchdogDataset(
+        dataset = WatchdogDataset(#看门狗逻辑，要求dataset超时保护
             dataset,
             worker_config=self.worker_config,
-            timeout_seconds=watchdog_timeout_seconds,
+            timeout_seconds=watchdog_timeout_seconds, #超时时间
             initial_timeout_seconds=watchdog_initial_timeout_seconds,
             fail_on_timeout=fail_on_timeout,
         )
 
         if gc_collect_every_n_steps > 0:
-            dataset = GcDataset(
+            dataset = GcDataset( #垃圾回收逻辑
                 dataset,
                 worker_config=self.worker_config,
                 every_n_iter=gc_collect_every_n_steps,
                 freeze=gc_freeze_at_start,
             )
 
-        dataset = SimpleSavableDatasetWrapper(
+        dataset = SimpleSavableDatasetWrapper( #数据可恢复逻辑
             dataset, worker_config=self.worker_config, cache_pool=cache_pool
         )
 
-        self._worker_sample_counters = [0] * max(self.worker_config.num_workers, 1)
+        self._worker_sample_counters = [0] * max(self.worker_config.num_workers, 1) #给每个 worker 分配一个独立的样本计数器，初始全为 0。
 
         kwargs = {}
         if self.worker_config.num_workers > 0:
@@ -1277,15 +1277,15 @@ class BasicDataLoader(DataLoader[T], Generic[T]):
 
         seed_per_worker = [
             self.worker_config.worker_seed(i) for i in range(self.worker_config.num_workers)
-        ]
+        ]#为每个 worker 子进程种一个互不相同、且与 rank 绑定的随机种子
 
         gc.collect()  # This ensures that we don't include any old worker refs in the newly forked worker processes
 
-        super().__init__(
+        super().__init__(#初始化父类torch的DataLoader
             dataset,
-            batch_size=None,
-            shuffle=False,
-            num_workers=self.worker_config.num_workers,
+            batch_size=None, #不开启torch的batch逻辑，因为energon的dataset已经完成了batch逻辑
+            shuffle=False, #不开启torch的shuffle逻辑，因为energon的dataset已经完成了shuffle逻辑
+            num_workers=self.worker_config.num_workers, #worker数量
             pin_memory=True,
             worker_init_fn=partial(_init_worker, seed_per_worker),
             **kwargs,

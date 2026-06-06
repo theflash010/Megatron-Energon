@@ -876,21 +876,21 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
                 size=shuffle_buffer_size,
                 worker_config=worker_config,
             )
-        dataset = self.build_encode_sample(dataset, worker_config=worker_config)
+        dataset = self.build_encode_sample(dataset, worker_config=worker_config)#preencode/encode的逻辑封装
         dataset = self.build_batch(
             dataset,
             batch_size=batch_size,
             batch_drop_last=batch_drop_last,
             packing_buffer_size=packing_buffer_size,
             worker_config=worker_config,
-        )
-        if virtual_epoch_length > 0:
-            dataset = EpochizeDataset(
+        )#packing/grouping/batching/encode_batch等封装逻辑
+        if virtual_epoch_length > 0: #为了在大模型无限流数据训练中，引入"软 epoch"边界
+            dataset = EpochizeDataset(#epochize逻辑
                 dataset,
-                length=virtual_epoch_length,
+                length=virtual_epoch_length, #虚拟epoch长度
                 worker_config=worker_config,
             )
-        if worker_config.should_log(level=1):
+        if worker_config.should_log(level=1): #条件性日志包装器
             dataset = LogSampleDataset(dataset, mode="train", worker_config=worker_config)
 
         return dataset
