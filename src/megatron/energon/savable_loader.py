@@ -1281,7 +1281,7 @@ class BasicDataLoader(DataLoader[T], Generic[T]):
 
         gc.collect()  # This ensures that we don't include any old worker refs in the newly forked worker processes
 
-        super().__init__(#初始化父类torch的DataLoader
+        super().__init__(#初始化父类torch的DataLoader，没在这fork多个worker进程
             dataset,
             batch_size=None, #不开启torch的batch逻辑，因为energon的dataset已经完成了batch逻辑
             shuffle=False, #不开启torch的shuffle逻辑，因为energon的dataset已经完成了shuffle逻辑

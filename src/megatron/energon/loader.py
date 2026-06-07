@@ -109,7 +109,7 @@ def get_loader(
                 "Passing a worker_config to get_loader() is deprecated and will have no effect."
             )
 
-    return BasicDataLoader(
+    return BasicDataLoader(#创建dataloder，底层是torch的DataLoader
         dataset,
         prefetch_factor=prefetch_factor, #给父类torch初始化的参数，代表每个 worker 预取的样本数，这里的样本在energon的逻辑下就是batch
         cache_pool=cache_pool,
