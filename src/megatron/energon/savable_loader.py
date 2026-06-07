@@ -69,7 +69,7 @@ class SimpleSavableDatasetWrapper(BaseWrapperDataset[T, Tuple[int, int, T]], Gen
     cache_pool: CachePool
 
     _state_restored: bool
-    _sample_index: int
+    _sample_index: int #_sample_index 是 SimpleSavableDatasetWrapper 自己的 worker 内样本计数 
 
     _savable_fields = ("_sample_index",)
 
@@ -100,29 +100,29 @@ class SimpleSavableDatasetWrapper(BaseWrapperDataset[T, Tuple[int, int, T]], Gen
         raise AttributeError("Disabled direct length access to avoid DataLoader warnings.")
 
     def __iter__(self):
-        self._state_restored = True
-        worker_id = self.worker_config.rank_worker_id()
-        global_worker_id = self.worker_config.global_worker_id()
+        self._state_restored = True #这个标志位，表示是否需要重新恢复数据。如果需要恢复，那么就设置为True，否则为False。
+        worker_id = self.worker_config.rank_worker_id() #worker_id是在 rank 内的编号 0..num_workers-1
+        global_worker_id = self.worker_config.global_worker_id() #global_worker_id 是 rank * num_workers + worker_id 这种全局唯一编号。
         while self._state_restored:
             self._state_restored = False
-            self.worker_config.worker_activate(self._sample_index, cache_pool=self.cache_pool)
+            self.worker_config.worker_activate(self._sample_index, cache_pool=self.cache_pool) # worker_activate = "我现在是这个 worker、要迭代到第 sample_index 条、cache pool 用这个"——把它写进一组 ClassVar 进程级上下文
             worker_active = True
             try:
-                for src_data in self.dataset:#针对wrapper数据集嵌套获取数据
-                    self.worker_config.worker_deactivate()
+                for src_data in self.dataset: #针对wrapper数据集嵌套获取数据
+                    self.worker_config.worker_deactivate() #worker_deactivate = "我迭代完了，把上下文清空"，保证这次数据已经被正确加载
                     worker_active = False
                     sample_index = self._sample_index
                     src_data = add_sample_restore_key(
                         src_data, global_worker_id, sample_index, src=self
                     )
-                    self._sample_index += 1
+                    self._sample_index += 1 #计数器加1，worker迭代到下一条数据
                     yield worker_id, sample_index, src_data
-                    if self._state_restored:
+                    if self._state_restored: #如果需要恢复，就跳出，重新迭代。
                         # Restart iterator after restore
                         break
                     self.worker_config.worker_activate(
                         self._sample_index, cache_pool=self.cache_pool
-                    )
+                    )#记录worker的上下文
                     worker_active = True
             finally:
                 if worker_active:
