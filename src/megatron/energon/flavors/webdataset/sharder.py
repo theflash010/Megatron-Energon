@@ -358,7 +358,7 @@ class Sharder:
                 shard_cumsums,
                 local_worker_sample_split_offsets,
                 max_samples_per_sequence=max_samples_per_sequence,
-            )#每个for循环，获取一个worker处理的shard在切分为sequence（每个sequence是max_samples_per_sequence个样本）之后的起始样本索引和末尾样本索引。返回的 offsets 如：[[0, 1000], [1000, 2000], [2000, 3000]]
+            )#每个for循环，获取当前dp rank的一个worker处理的shard在切分为sequence（每个sequence是max_samples_per_sequence个样本）之后的起始样本索引和末尾样本索引。返回的 offsets 如：[[0, 1000], [1000, 2000], [2000, 3000]]
         )
 
     @classmethod

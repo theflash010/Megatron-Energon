@@ -366,12 +366,12 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
 
     __default_failure_tolerance__: Optional[int] = 100
 
-    cookers: Sequence[Cooker[T_sample]] = ()
+    cookers: Sequence[Cooker[T_sample]] = () #Cooker对象
     #: Internal: List of registered cookers. Will be the same as `cookers` after registering cookers.
     _registered_cookers: List[Cooker[T_sample]]
 
     #: The decoder to use for decoding samples. Set manually as needed to override options.
-    decoder: Optional[SampleDecoder] = SampleDecoder()
+    decoder: Optional[SampleDecoder] = SampleDecoder() #SampleDecoder对象
 
     def _is_overridden(
         self, bound_method: Callable[..., Any], bases: Optional[Sequence[Type[Any]]] = None
@@ -739,7 +739,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             )
         else:
             assert dataset.aux is None, "Aux is not supported for non-crude datasets."
-            return dataset.dataset.build(worker_rotation_offset=worker_rotation_offset)#普通数据集直接build，build之后只有底层数据集和decoder的转换逻辑封装
+            return dataset.dataset.build(worker_rotation_offset=worker_rotation_offset)#普通数据集直接build，build之后只有底层数据集和decoder的转换逻辑封装。dataset.dataset是数据集工厂类，如BaseWebdatasetFactory
 
     def build_encode_sample(
         self,
@@ -795,7 +795,7 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             rotation_lengths[i] += rotation_lengths[i - 1] #前缀和
         worker_rotation_offsets = [
             rotation_length % global_workers for rotation_length in [0] + rotation_lengths[:-1]
-        ] #作用是将额外剩余的样本公平的分配到各个worker上，如果一个数据集有1001个样本，1001%4=1，那么这次多出来的1个样本由于offset=0，所以优先分配给worker0，但是后续为了均匀分配应该跳过worker0，所以之后offset=1，也就是之后剩余的额外样本优先分配给worker1，以此类推，大家轮着处理多出来的样本。这里的worker_rotation_offsets决定第i个数据集从哪个worker开始分配
+        ] #作用是将所有数据集的额外剩余的样本公平的分配到各个worker上，如果前i-1个数据集的样本数前缀是1001个，1001%4=1，说明在前序数据集的分配中多出来的1个样本被分配给了worker0，那么对于第i个数据集就应该从worker1开始分配，这样如果第i个数据集也有多余的话就会按顺序分给worker1，worker2，worker3，而不是worker0。以此类推，大家轮着处理多出来的样本。这里的worker_rotation_offsets决定第i个数据集从哪个worker开始分配（每个worker都会处理所有的数据集，所以对于多个子数据集组成的混合数据集，每个worker会读取所有子数据集的一部分）
 
 
         if blend_mode == DatasetBlendMode.DATASET_WEIGHT: #每个数据集无限循环 按权重采样 
@@ -805,17 +805,17 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
             inner_datasets = [
                 (
                     RepeatDataset(
-                        self._load_dataset(
+                        self._load_dataset(#构建底层WebdatasetSampleLoaderDataset数据集，封装数据集工厂的数据预处理逻辑（包括调用decoder对原始数据进行解码，用 _sample_loader 映射字段，转换为目标类型）
                             dataset, worker_rotation_offset, worker_config=worker_config
                         ),
                         worker_config=worker_config,
                     ),
-                    1.0 if dataset.weight is None else float(dataset.weight),
+                    1.0 if dataset.weight is None else float(dataset.weight), #数据集权重
                 )
-                for dataset, worker_rotation_offset in zip(datasets, worker_rotation_offsets)
+                for dataset, worker_rotation_offset in zip(datasets, worker_rotation_offsets) #遍历第i个数据集工厂和当前数据集分配样本的起始worker编号
             ]
             # Already repeating the inner datasets, so no need to repeat again
-            repeat = False
+            repeat = False #每个子数据集已经无限重复，外层就不再重复了（repeat = False 跳过）
         elif blend_mode == DatasetBlendMode.SAMPLE_REPETITIONS or (
             not repeat and blend_mode == DatasetBlendMode.NONE
         ): # 样本重复，但是每个数据集的样本重复次数可以指定。
@@ -859,15 +859,15 @@ class TaskEncoder(ABC, Generic[T_sample, T_encoded_sample, T_raw_batch, T_batch]
         if len(inner_datasets) > 1:
             # The worker offset for each dataset is the cumsum of the dataset lengths, but modulo the
             # global number of workers.
-            dataset = BlendDataset(
-                *[inner_dataset[:2] for inner_dataset in inner_datasets],
+            dataset = BlendDataset( #封装混合数据集逻辑
+                *[inner_dataset[:2] for inner_dataset in inner_datasets], #对inner_datasets中每个元素取前两个元素：(RepeatDataset包装的数据集, 权重)
                 worker_config=worker_config,
             )
         elif len(datasets) == 1:
             dataset = inner_datasets[0][0]
         else:
             raise ValueError("No datasets given.")
-        if repeat:
+        if repeat: #如果外层还需要重复就进行包装
             # Still need to repeat the dataset
             dataset = RepeatDataset(dataset, worker_config=worker_config)
         if shuffle_buffer_size is not None and shuffle_buffer_size > 1:

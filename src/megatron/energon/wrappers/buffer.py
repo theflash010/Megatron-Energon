@@ -25,11 +25,11 @@ T_sample = TypeVar("T_sample")
 class SavableSampleBuffer(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
     """A buffer of samples, savable."""
 
-    _buffer: List[T_sample]
-    _restore_keys: List[Tuple[Union[str, int, tuple], ...]]
+    _buffer: List[T_sample] #缓冲的样本列表
+    _restore_keys: List[Tuple[Union[str, int, tuple], ...]] #每条样本的 __restore_key__，与 _buffer 一一对应
 
     _savable_fields = ("_restore_keys",)
-    _restore_pending: bool = False
+    _restore_pending: bool = False #标记：下次 worker_start() 时需从 key 重建 buffer
 
     def __init__(self, dataset: SavableDataset[T_sample], *, worker_config: WorkerConfig):
         super().__init__(dataset, worker_config=worker_config)
@@ -39,15 +39,15 @@ class SavableSampleBuffer(BaseWrapperDataset[T_sample, T_sample], Generic[T_samp
         self._buffer = []
         self._restore_keys = []
 
-    def worker_start(self) -> None:
+    def worker_start(self) -> None: #断点恢复时从 key 重建 buffer 中的样本
         if self._restore_pending:
             assert len(self._buffer) == 0
             self._restore_pending = False
             for restore_key in self._restore_keys:
-                self._buffer.append(self.restore_sample(restore_key))
+                self._buffer.append(self.restore_sample(restore_key)) #沿 key 重新读数据并加入到buffer中
         assert len(self._buffer) == len(self._restore_keys)
 
-    def append(self, sample: T_sample) -> T_sample:
+    def append(self, sample: T_sample) -> T_sample: #_buffer[i] 和 _restore_keys[i]同步添加
         self._buffer.append(sample)
         self._restore_keys.append(get_sample_restore_key(sample))
         return sample
@@ -59,15 +59,15 @@ class SavableSampleBuffer(BaseWrapperDataset[T_sample, T_sample], Generic[T_samp
         else:
             self._restore_keys.extend(restore_keys)
 
-    def append_iter(self) -> Generator[T_sample, None, None]:
+    def append_iter(self) -> Generator[T_sample, None, None]: #每 next() 一次：从内部数据集读一条 → append 到 buffer → yield 该样本。
         for sample in self.dataset:
             yield self.append(sample)
 
-    def pop(self, index: int) -> T_sample:
+    def pop(self, index: int) -> T_sample: #_buffer[i] 和 _restore_keys[i]同步删除
         self._restore_keys.pop(index)
         return self._buffer.pop(index)
 
-    def flush(self) -> Tuple[List[T_sample], Tuple[Any, ...]]:
+    def flush(self) -> Tuple[List[T_sample], Tuple[Any, ...]]: #吐出所有buffer中的样本，并清空buffer
         buffer = list(self._buffer)
         restore_key = tuple(self._restore_keys)
         self._buffer.clear()
@@ -95,7 +95,7 @@ class SavableSampleBuffer(BaseWrapperDataset[T_sample, T_sample], Generic[T_samp
         del self._buffer[index]
         del self._restore_keys[index]
 
-    def len_worker(self, worker_idx: int | None = None) -> int:
+    def len_worker(self, worker_idx: int | None = None) -> int: #返回当前 worker 的 buffer 中数据数量
         self.worker_config.assert_worker()
         assert worker_idx is None or worker_idx == self.worker_config.rank_worker_id(), (
             "SavableSampleBuffer.len_worker only available for the current worker"

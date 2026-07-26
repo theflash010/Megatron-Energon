@@ -409,22 +409,22 @@ class ShardInfosITarReader(ITarReader[int]):
         # the shard index for a given sample index.
         # Get all tar files from the shard_infos
 
-        self.shard_count_cumsum = [0]
+        self.shard_count_cumsum = [0] #第i个元素代表记录前i-1个shard（从0编号）的累积样本数量
         self.shard_tar_file_idxs = []
         sample_idx = 0
         for shardinfo in shard_infos:
             filepath = shardinfo.path
             filename = shardinfo.name
 
-            if filename not in cur_tar_files:
+            if filename not in cur_tar_files: #去重
                 cur_tar_files[filename] = (len(cur_tar_files), filepath)
 
             sample_idx += shardinfo.count
             self.shard_count_cumsum.append(sample_idx)
             self.shard_tar_file_idxs.append(cur_tar_files[filename][0])
 
-        tar_filenames = list(cur_tar_files.keys())
-        tar_filepaths = [p[1] for p in cur_tar_files.values()]
+        tar_filenames = list(cur_tar_files.keys()) #所有shard文件的名称
+        tar_filepaths = [p[1] for p in cur_tar_files.values()] #所有shard文件的路径
 
         # Instantiate cached reader for the .tar.idx files
         self.cached_offset_reader = CachedItarOffsetReader(cache_size=itar_cache_size)
@@ -440,31 +440,31 @@ class ShardInfosITarReader(ITarReader[int]):
         )
 
     def _get_itar_sample_pointer(self, idx: int) -> ITarSamplePointer:
-        """
+        """ #将全局样本下标 idx 转换为 ITarSamplePointer（物理位置指针）
         Get the ITarSample object for the given index.
         """
 
         # Find the shard index using binary search
-        shard_idx = bisect_right(self.shard_count_cumsum, idx) - 1
+        shard_idx = bisect_right(self.shard_count_cumsum, idx) - 1 #定位 shard（L448）：用 bisect_right(shard_count_cumsum, idx) - 1 二分查找，找到 idx 落在哪个 shard 里。
         if shard_idx < 0 or shard_idx >= len(self.shard_infos):
             raise IndexError(f"Index out of bounds: {idx}")
 
         # Get the shard info for the given index
         shard = self.shard_infos[shard_idx]
-        sample_idx_in_shard_file = idx - self.shard_count_cumsum[shard_idx]
+        sample_idx_in_shard_file = idx - self.shard_count_cumsum[shard_idx] #计算 shard 内部偏移
 
         # Now we know the tar file and the sample offset in the file.
         # We need to figure out the byte offset and size of the sample,
         # by looking it up in the .tar.idx file.
         byte_offset, byte_size = self.cached_offset_reader.get_itar_byte_offset(
             shard.path, sample_idx_in_shard_file
-        )
+        ) #查询字节偏移（L459-461）：委托 CachedItarOffsetReader.get_itar_byte_offset(shard.path, sample_idx_in_shard_file) 读取 .tar.idx 文件，获得 (byte_offset, byte_size)
 
         return ITarSamplePointer(
             tar_file_id=self.shard_tar_file_idxs[shard_idx],
             byte_offset=byte_offset,
             byte_size=byte_size,
-        )
+        ) #返回指针（L463-467）：构造 ITarSamplePointer(tar_file_id, byte_offset, byte_size)。
 
     def __len__(self) -> int:
         return self.shard_count_cumsum[-1]

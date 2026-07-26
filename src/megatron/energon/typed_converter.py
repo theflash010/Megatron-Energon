@@ -109,17 +109,17 @@ class JsonParser:
         Returns:
             Instantiated class
         """
-        kwargs = kwargs.copy()
-        module_name = kwargs.pop("__module__", None)
+        kwargs = kwargs.copy() #先 copy 一份避免修改原始 dicts
+        module_name = kwargs.pop("__module__", None) #从 kwargs 中 pop 出 __module__（模块路径），如果 dict 里没有就是 None
         # Check if this is a type of Type[...] or just a class. Type[...] will return the class instead
         # of instantiating it.
-        is_type = typing.get_origin(inst_type) is type
-        is_callable = typing.get_origin(inst_type) is typing.get_origin(Callable)
-        is_calling_function = False
-        is_instantiating_class = False
-        if is_type:
-            inst_type = typing.get_args(inst_type)[0]
-            object_name = kwargs.pop("__class__", None)
+        is_type = typing.get_origin(inst_type) is type #检查 inst_type 是不是 Type[X] 这种泛型。例如 typing.get_origin(Type[CrudeWebdataset]) 返回 type。如果是，说明调用方想要拿类本身而不是实例。
+        is_callable = typing.get_origin(inst_type) is typing.get_origin(Callable) #检查 inst_type 是不是 Callable[[...], RetType]，说明想要的是函数。
+        is_calling_function = False #先初始化为 False，后续在 else 分支里如果碰到对应 key 再设为 True。 ture说明用户想实例化一个类
+        is_instantiating_class = False #ture说明用户想调用一个函数
+        if is_type: #分支1：Type[X] 模式
+            inst_type = typing.get_args(inst_type)[0] #把泛型的实际参数解出来，取出第一个参数X，然后把 inst_type 重新赋值为这个实际的类
+            object_name = kwargs.pop("__class__", None) #从 kwargs 中 pop 出 __class__（类名），如果 dict 里没有就是 None
             if module_name is None or object_name is None:
                 raise JsonValueError(
                     f"Expected __module__ and __class__ for Type[{inst_type}], got {kwargs}",
@@ -128,8 +128,8 @@ class JsonParser:
                     _path,
                     _stage,
                 )
-        elif is_callable:
-            object_name = kwargs.pop("__function__", None)
+        elif is_callable: #分支2：Callable 模式
+            object_name = kwargs.pop("__function__", None) #从 kwargs 中 pop 出 __function__（函数名），如果 dict 里没有就是 None
             if module_name is None or object_name is None:
                 raise JsonValueError(
                     f"Expected __module__ and __function__ for {inst_type}, got {kwargs}",
@@ -141,9 +141,9 @@ class JsonParser:
         else:
             if "__class__" in kwargs: #如果CrudeWebdataset的dataset.yaml中指定的__class__=CrudeWebdataset，那在这里会覆盖之前的inst_type，即CrudeWebdataset（这个类本质上也是一个数据集工厂类）
                 object_name = kwargs.pop("__class__", None)
-                is_instantiating_class = True
-                is_calling_function = False
-            elif "__function__" in kwargs:
+                is_instantiating_class = True #如果 kwargs 中有 __class__ → 按类实例化
+                is_calling_function = False #False → 不是按函数调用
+            elif "__function__" in kwargs: #如果有 __function__ → 按函数调用
                 object_name = kwargs.pop("__function__", None)
                 is_instantiating_class = False
                 is_calling_function = True
@@ -184,7 +184,7 @@ class JsonParser:
                     raise JsonValueError(
                         f"Expected {inst_type}, got {cls}", inst_type, cls, _path, _stage
                     )
-        if is_type or is_callable:
+        if is_type or is_callable: #用户想要的是类本身或者想要的是函数本身
             inst = cls
         else:
             # Do not assert the other cases, we fallback to the passed cls

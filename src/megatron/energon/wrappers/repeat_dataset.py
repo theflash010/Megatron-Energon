@@ -14,9 +14,9 @@ T_sample = TypeVar("T_sample")
 class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
     """This dataset repeats the inner dataset indefinitely or a specific number of repeats."""
 
-    repeats: Optional[Union[int, float]]
-    _repetition: int
-    _index: int
+    repeats: Optional[Union[int, float]] #重复次数。None = 无限重复；int = 精确次数；float = 最后一次只遍历部分数据（如 2.5 表示完整遍历 2 次 + 第 3 次遍历前 50% 数据）
+    _repetition: int #当前已完成的重复轮次
+    _index: int #当前轮次中已遍历的样本索引
 
     _savable_fields = ("_repetition", "_index")
 
@@ -28,7 +28,7 @@ class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
         restart: bool = True,
         worker_config: WorkerConfig,
     ):
-        """Construct a RepeatDataset. 重复数据集逻辑
+        """Construct a RepeatDataset. #重复数据集逻辑
 
         Args:
             dataset: The input dataset to repeat.
@@ -38,8 +38,8 @@ class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
             worker_config: Configuration for the workers.
         """
         super().__init__(dataset, worker_config=worker_config)
-        self.repeats = repeats #重复次数
-        self.restart = restart #是否重新启动
+        self.repeats = repeats
+        self.restart = restart
 
         self.reset_state_own()
 
@@ -62,20 +62,20 @@ class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
         # This is due to the fact that the number of samples is not exactly divisible by the number of workers.
 
         # The dataset length is the size for the current rank. Need to divide by the number of workers
-        ds_len = self.dataset.len_worker()
+        ds_len = self.dataset.len_worker() #确定当前worker进程需要遍历的这个数据集的样本数量
 
         while self.repeats is None or self._repetition < self.repeats:
             if self.repeats is not None and self._repetition == math.floor(self.repeats):
                 # Last iteration, adjust the number of samples
-                fraction = self.repeats - math.floor(self.repeats)
-                stop_after = math.floor(ds_len * fraction)
+                fraction = self.repeats - math.floor(self.repeats)     #记录小数部分
+                stop_after = math.floor(ds_len * fraction)  #记录不完整遍历的样本数量
                 if self._index >= stop_after:
                     # We restored an index and it is already past the stop_after
                     break
-            else:
+            else: #完整遍历，设置stop_after=None，表示遍历完整个数据集
                 stop_after = None
 
-            for sample in self.dataset:
+            for sample in self.dataset: #遍历数据集，yield sample，直到完成当前轮次的遍历（完整遍历或不完整遍历）
                 self._index += 1
                 yield sample
                 if stop_after is not None and self._index >= stop_after:
@@ -91,8 +91,8 @@ class RepeatDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
                         "repeats": self.repeats,
                     }
                 )
-            self._repetition += 1
-            self._index = 0
+            self._repetition += 1 #更新重复轮次
+            self._index = 0 #重置当前轮次的遍历索引
 
         if self.restart:
             self._repetition = 0

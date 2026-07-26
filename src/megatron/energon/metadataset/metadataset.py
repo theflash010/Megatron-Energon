@@ -21,7 +21,7 @@ from megatron.energon.worker import WorkerConfig
 
 @edataclass
 class DatasetReference:
-    path: Union[str, EPath]
+    path: Union[str, EPath] #单个数据集自身路径
     split_part: Optional[str] = None
     # Note: subflavor is only for legacy compatibility.
     subflavor: Optional[str] = None
@@ -35,7 +35,7 @@ class DatasetReference:
     _dataset: Optional[DatasetLoaderInterface] = None
 
     def __post_init__(self):
-        if self.subflavor is not None:
+        if self.subflavor is not None: #把self.subflavor放到self.subflavors中
             warn_deprecated(
                 "subflavor is deprecated, use subflavors instead. This will be removed in a future release."
             )
@@ -82,17 +82,17 @@ class DatasetReference:
         return dict(inherited_subflavors or {})
 
     def post_initialize(self, mds_path: Optional[EPath] = None):
-        self._resolve_path(mds_path)
-        if self.path.is_file():
-            self._dataset = self._load_nested_metadataset()
-            self._dataset.post_initialize()
-        elif check_dataset_info_present(self.path):
-            self._dataset = DatasetLoader(
+        self._resolve_path(mds_path) #解析相对路径为绝对路径
+        if self.path.is_file(): #判断是嵌套 metadataset（文件）还是普通数据集（目录）
+            self._dataset = self._load_nested_metadataset() #③-如果是嵌套mds：加载子metadataset.yaml
+            self._dataset.post_initialize() #    递归初始化
+        elif check_dataset_info_present(self.path): # ③-如果是普通wds数据集
+            self._dataset = DatasetLoader(#    创建真正的 DatasetLoader
                 path=self.path,
                 split_config=self.split_config,
                 dataset_config=self.dataset_config,
             )
-            self._dataset.post_initialize()
+            self._dataset.post_initialize()#    递归初始化
         else:
             raise FileNotFoundError(self.path)
 
@@ -175,7 +175,7 @@ class DatasetReference:
 class MetadatasetBlender:
     """Internal blending of the dataset."""
 
-    datasets: List[DatasetReference]
+    datasets: List[DatasetReference] #DatasetReference代表一个数据集加载器datasetloader，这里是一个数据集加载器的列表，代表混合的数据集
 
     def post_initialize(self, mds_path: Optional[EPath] = None):
         assert mds_path is not None
@@ -212,9 +212,9 @@ class MetadatasetBlender:
         subset: Optional[DatasetSubset] = None,
         **kwargs,
     ) -> LoadedDatasetList:
-        sum_weight = sum(dataset.weight for dataset in self.datasets)
+        sum_weight = sum(dataset.weight for dataset in self.datasets) #这个Blender负责的全部数据集的weight之和
         datasets = []
-        for dataset in self.datasets:
+        for dataset in self.datasets:#遍历Blender中的每个数据集加载器datasetloader
             inner_result = dataset.get_datasets(
                 training=training,
                 split_part=split_part,
@@ -223,7 +223,7 @@ class MetadatasetBlender:
                 shuffle_over_epochs_multiplier=shuffle_over_epochs_multiplier,
                 subset=subset,
                 **kwargs,
-            )
+            )#完成当前数据集加载器datasetloader的数据集工厂构造，这个数据集加载器可能是负责单个数据集的DatasetLoader，也可能是负责Metadataset，对应的结果inner_result（LoadedDatasetList）可能包含单个或多个数据集工厂对象
             if inner_result.blend_mode not in (
                 DatasetBlendMode.NONE,
                 DatasetBlendMode.DATASET_WEIGHT,
@@ -231,16 +231,16 @@ class MetadatasetBlender:
                 raise ValueError(
                     "Can only blend datasets which are of the same blend mode. Cannot mix blend with blend_epochized."
                 )
-            for loaded_dataset in inner_result.datasets:
+            for loaded_dataset in inner_result.datasets:#遍历数据集加载器返回的数据集工厂列表
                 if inner_result.blend_mode == DatasetBlendMode.DATASET_WEIGHT:
                     assert isinstance(loaded_dataset.weight, float)
                 else:
                     assert loaded_dataset.weight is None
                     loaded_dataset.weight = 1.0
-                loaded_dataset.weight = loaded_dataset.weight * dataset.weight / sum_weight
-                datasets.append(loaded_dataset)
+                loaded_dataset.weight = loaded_dataset.weight * dataset.weight / sum_weight #对weight进行归一化，loaded_dataset.weight是inner_result内已经归一化完的数据集工厂权重，（dataset.weight / sum_weight）代表当前数据集加载器datasetloader的数据集工厂权重在所有数据集加载器中所占的权重比例，相乘就是归一化后的权重
+                datasets.append(loaded_dataset) #添加数据集工厂对象
         return LoadedDatasetList(
-            blend_mode=DatasetBlendMode.DATASET_WEIGHT,
+            blend_mode=DatasetBlendMode.DATASET_WEIGHT, #混合模式为DATASET_WEIGHT
             datasets=datasets,
         )
 

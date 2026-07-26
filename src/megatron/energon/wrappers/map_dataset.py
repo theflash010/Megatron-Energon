@@ -30,7 +30,7 @@ T_sample_out = TypeVar("T_sample_out")
 class MapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sample, T_sample_out]):
     """This dataset wrapper applies a custom function to transform each sample."""
 
-    map_fn: Callable[[T_sample], Union[T_sample_out, Generator[T_sample_out, None, None]]]
+    map_fn: Callable[[T_sample], Union[T_sample_out, Generator[T_sample_out, None, None]]] #用户函数：(样本) → 新样本 或 (样本) → Generator[新样本]
     stateless_map_fn: bool
     map_fn_config: Optional[Union[Dict[str, Any], Callable[[], Dict[str, Any]]]]
     _sample_index: SampleIndex
@@ -93,7 +93,7 @@ class MapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sample, T
         return self.dataset.len_worker(worker_idx)
 
     def __iter__(self) -> Iterator[T_sample_out]:
-        if self._generator_sample_key is not None:
+        if self._generator_sample_key is not None: #断点恢复
             assert self._generator_offset is not None
             sample = self.dataset.restore_sample(self._generator_sample_key)
             # Do not increment the sample index, use previous index
@@ -124,8 +124,8 @@ class MapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sample, T
             restore_key = get_sample_restore_key(sample)
             with self._map_failure_handler.handle_errors(sample):
                 with self._sample_index.ctx() as sample_idx:
-                    mapped_sample = self.map_fn(sample)
-                if isinstance(mapped_sample, Generator):
+                    mapped_sample = self.map_fn(sample) #调用用户自定义的map_fn函数，对sample进行处理
+                if isinstance(mapped_sample, Generator): #生成器模式：一条输入 → 多条输出
                     assert inspect.isgeneratorfunction(self.map_fn), (
                         f"Generator in {self.map_fn} but not marked as such."
                     )
@@ -146,7 +146,7 @@ class MapDataset(BaseWrapperDataset[T_sample, T_sample_out], Generic[T_sample, T
                         )
                     self._generator_sample_key = None
                     self._generator_offset = None
-                else:
+                else: #普通模式：一条输入 → 一条输出
                     self._map_failure_handler.reset()
                     yield add_sample_restore_key(
                         mapped_sample,

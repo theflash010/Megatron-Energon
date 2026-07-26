@@ -21,8 +21,8 @@ from megatron.energon.worker import WorkerConfig
 class DatasetLoader(DatasetLoaderInterface):
     """Loads a dataset from a path."""     #只加载一个数据集的datasetloader类型（其他类型，比如Metadataset加载多个数据集）
 
-    path: Union[str, EPath]
-    split_part: Optional[str] = None
+    path: Union[str, EPath] ## 数据集路径
+    split_part: Optional[str] = None ## 默认 split（train/val/test）
     subflavors: Optional[Dict[str, Any]] = None
     shuffle_over_epochs_multiplier: Optional[int] = 1
     dataset_config: Optional[str] = None

@@ -36,8 +36,8 @@ def load_dataset(
             path,
             default_type=Metadataset,
             default_kwargs=dict(path=path, **kwargs),
-        )
-        mds.post_initialize()
+        )#构建Metadataset对象
+        mds.post_initialize()#递归初始化所有子数据集
         return mds
     elif ds_type in (EnergonDatasetType.WEBDATASET, EnergonDatasetType.JSONL):
         ds = DatasetLoader(path=path, **kwargs) #初始化DatasetLoader，父类也是DatasetLoaderInterface

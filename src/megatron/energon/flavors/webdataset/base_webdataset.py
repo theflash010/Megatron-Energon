@@ -48,7 +48,7 @@ class BaseWebdatasetFactory(
     Base class for all webdataset sample loader factories. Applies proper sharding across workers.
     """
 
-    path: EPath
+    path: EPath #类型注解
     paths: list[EPath]
 
     shards: List[ShardInfo]
@@ -70,15 +70,15 @@ class BaseWebdatasetFactory(
         self,
         path: EPath,
         *,
-        split_part: str,
-        training: bool,
+        split_part: str, #要加载的数据集分片，如 'train'、'val'、'test'
+        training: bool, #是否为训练模式。为 True 时启用随机打乱并循环遍历数据集
         worker_config: WorkerConfig,
         shuffle_over_epochs: Optional[int] = 1,
-        parallel_shard_iters: Optional[int] = None,
-        max_samples_per_sequence: Optional[int] = None,
+        parallel_shard_iters: Optional[int] = None, #每个 worker 并行打开的 shard 数量
+        max_samples_per_sequence: Optional[int] = None,  #每个序列中最多连续读取的样本数量
         subset: Optional[DatasetSubset] = None,
         split_config: Optional[str] = None,
-        part_filter: Optional[Callable[[str], bool]] = None,
+        part_filter: Optional[Callable[[str], bool]] = None, #（内部参数）用于按 key 过滤 tar 文件的函数
     ):
         """
         Base factory for the webdataset sample loader.
@@ -109,9 +109,9 @@ class BaseWebdatasetFactory(
         self.path = path
         self.paths = [path]
         self.name = path.display_name
-        self.shards = wds_meta.shards
-        self.sample_excludes = wds_meta.sample_excludes
-        self.split_part_files = wds_meta.split_part_files
+        self.shards = wds_meta.shards #当前 split 实际需要加载的 shard 列表。已排除掉被 exclude 的整个 shard 文件
+        self.sample_excludes = wds_meta.sample_excludes #要排除的具体样本 key。格式为 "shard_xxx.tar/yyyyy"，表示只排除该 shard 内索引为 yyyyy 的样本
+        self.split_part_files = wds_meta.split_part_files #当前 split 展开所有通配符后的完整文件名列表（包含被 exclude 掉的文件）
         self.training = training
         self.worker_config = worker_config
         self.shuffle_over_epochs = shuffle_over_epochs
@@ -150,8 +150,8 @@ class BaseWebdatasetFactory(
             self.shards,  # ShardInfo 列表
             part_filter=self.part_filter, # 样本部分过滤函数
             sample_filter=self.sample_filter, # 样本过滤函数
-            itar_cache_size=parallel_shard_iters, #itar_cache_size 控制同时打开的文件数（LRU）
-        )#ftar文件读取对象，具有缓存功能
+            itar_cache_size=parallel_shard_iters, #itar_cache_size 控制同时打开的文件数（LRU），不代表并行读取多个样本，每个样本是顺序读取的，打开多个文件只是为了随机选择
+        )#定位：把全局下标 idx 翻译成物理位置（哪个 tar 文件 + 第几个字节）
 
         dataset = WebdatasetSampleLoaderDataset(
             join_readers=[itar_reader], # 1. Tar 读取器
@@ -162,7 +162,7 @@ class BaseWebdatasetFactory(
         ) #WebdatasetSampleLoaderDataset 是最底层的数据集类，直接与 ITarReader 交互读取 tar 文件。
         return MapDataset(
             dataset,
-            self._load_sample_raw, #megatron.energon.flavors.webdataset.standard_webdataset.StandardWebdatasetFactory，包装处理逻辑，主要就是调用decoder对原始数据进行解码
+            self._load_sample_raw, #megatron.energon.flavors.webdataset.standard_webdataset.StandardWebdatasetFactory，包装处理逻辑，包括调用decoder对原始数据进行解码，用 _sample_loader 映射字段，转换为目标类型
             stateless_map_fn=True, #告诉系统这个转换函数是纯函数（无内部状态，可安全并行）
             map_fn_config=self.config, #传给 _load_sample_raw 的配置（如 decoder、transform 配置）
             worker_config=self.worker_config,

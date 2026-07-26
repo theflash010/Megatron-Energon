@@ -28,9 +28,9 @@ T_batch_sample = TypeVar("T_batch_sample", covariant=True)
 class BatchDataset(BaseWrapperDataset[T_batch_sample, T_batch], Generic[T_batch_sample, T_batch]):
     """This dataset wrapper transforms a dataset of samples into a dataset of batches."""
 
-    batch_size: int
-    batcher: Callable[[List[T_batch_sample]], T_batch]
-    drop_last: bool
+    batch_size: int #每组 batch 的样本数
+    batcher: Callable[[List[T_batch_sample]], T_batch] #用户函数：(样本列表) → batch，打包
+    drop_last: bool #最后不足 batch_size 的残量是否丢弃
     _sample_index: SampleIndex
     _generator_sample_keys: Optional[Any]
     _generator_offset: Optional[int]
@@ -96,7 +96,7 @@ class BatchDataset(BaseWrapperDataset[T_batch_sample, T_batch], Generic[T_batch_
         batch: List[T_batch_sample] = []
         sample_restore_keys = []
 
-        if self._generator_sample_keys is not None:
+        if self._generator_sample_keys is not None: #断点恢复
             sample_restore_keys = self._generator_sample_keys
             assert self._generator_offset is not None
             batch = [self.dataset.restore_sample(inner_idx) for inner_idx in sample_restore_keys]
@@ -129,8 +129,8 @@ class BatchDataset(BaseWrapperDataset[T_batch_sample, T_batch], Generic[T_batch_
         def flush() -> Generator[T_batch, None, None]:
             with self._batch_failure_handler.handle_errors(batch):
                 with self._sample_index.ctx() as sample_idx:
-                    batch_sample = self.batcher(batch)
-                if isinstance(batch_sample, Generator):
+                    batch_sample = self.batcher(batch) #用户函数：(样本列表) → batch，打包
+                if isinstance(batch_sample, Generator): ## 生成器模式：一组样本产出多条 batch → 逐条 yield
                     assert inspect.isgeneratorfunction(self.batcher), (
                         f"Generator in {self.batcher} but not marked as such."
                     )
@@ -150,19 +150,19 @@ class BatchDataset(BaseWrapperDataset[T_batch_sample, T_batch], Generic[T_batch_
                         )
                     self._generator_sample_keys = None
                     self._generator_offset = None
-                else:
+                else: # 正常模式：一组样本产出一条 batch
                     self._batch_failure_handler.reset()
                     set_sample_restore_key(batch_sample, sample_idx, *sample_restore_keys, src=self)
                     yield batch_sample
             sample_restore_keys.clear()
 
         for sample in self.dataset:
-            batch.append(sample)
+            batch.append(sample) #样本加入batch
             sample_restore_keys.append(get_sample_restore_key(sample))
-            if len(batch) == self.batch_size:
+            if len(batch) == self.batch_size: # 攒够一组，打包输出
                 yield from flush()
                 batch = []
-        if len(batch) > 0 and not self.drop_last:
+        if len(batch) > 0 and not self.drop_last: #排空残量
             yield from flush()
 
     def can_restore_sample(self) -> bool:

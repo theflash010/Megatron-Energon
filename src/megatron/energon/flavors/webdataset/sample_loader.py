@@ -28,48 +28,48 @@ class SliceState:
     """Represents the iteration state of a single slice slice to the index."""
 
     #: The slice index of this slice state
-    index: int
+    index: int #切片的编号
     #: The actual state: The global sample offset (`slice[index] <= offset < slice[index + 1]``)
-    current: int
+    current: int #当前读到的全局样本下标。初始值 = slice_offsets[index]，每读一个样本 +1
 
 
 class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
     """Internal class for loading samples from webdataset slices"""
 
     #: The readers for each joined dataset
-    join_readers: Sequence[ITarReader]
+    join_readers: Sequence[ITarReader] #tar 文件读取器列表。对于单数据集，只有一个 reader
 
     #: The offsets of the slice slices to iterate over for the current worker
-    slice_offsets: Optional[Sequence[int]]
+    slice_offsets: Optional[Sequence[int]] #该数据集中当前 worker 的切片偏移列表，由 ensure_slice_offsets() 从 workers_slice_offsets 取出并赋值
 
     # If = 1, every sample is seen exactly once per epoch. If > 1, samples
     # (or rather slice slices) are shuffled within this number of epochs (i.e. randomly
     # selected without replacement). If None, the slices are effectively shuffle over
     # infinite epochs (i.e. slice slices are drawn with replacement).
-    shuffle_over_epochs: Optional[int]
+    shuffle_over_epochs: Optional[int] #乱序策略：None=不 shuffle、1=每个 epoch 内 shuffle 一次、>1=跨 N 个 epoch 整体 shuffle 不重复、-1=无限放回抽样
     # Number of parallel iterators to be opened simultaneously (and random sample between them)
-    parallel_slice_iters: int
+    parallel_slice_iters: int #控制同时打开的文件数（LRU），不代表并行读取多个样本，每个样本是顺序读取的，打开多个文件只是为了随机选择
 
     # Worker's random generator
-    _worker_rng: WorkerRng
+    _worker_rng: WorkerRng #当前 worker 的随机数生成器，用于加权随机选切片、shuffle 切片列表等
 
     #: The RNG state to be used for regenerating the pending slices
     _pending_slices_rng_state: Optional[FlexState]
     #: The number of slices that have already been opened / processed and thus been removed from the
     # pending slices.
-    _pending_slices_offset: Optional[int]
+    _pending_slices_offset: Optional[int] #恢复用的
     #: Pending slices are the slices which have not yet been opened, but should be processed
     # in the current "epoch". If None, regenerate from the seed and offset.
-    _pending_slice_indexes: Optional[List[int]]
+    _pending_slice_indexes: Optional[List[int]] #负责 slice 进入 active 池的顺序，不是样本本身的读取顺序
     #: The active slices are the currently opened slices. May contain `None`, if there are fewer
     # slices available (i.e. pending_slices empty) than parallel slice iterators requested.
-    _active_slice_state: List[Optional[SliceState]]
+    _active_slice_state: List[Optional[SliceState]] #当前激活的 N 个切片的状态（SliceState），每个包含 index（切片索引）+ current（当前读到的位置）
     #: The total number of samples retrieved, it's just a monotonically increasing counter
-    _sample_count: int
+    _sample_count: int #累计产出的样本总数（单调递增，跨 epoch）
     #: Number of epochs this dataset has been iterated over
-    _epoch_count: int
+    _epoch_count: int #已完成的 epoch 数
     #: The number of samples retrieved in current epoch
-    _epoch_sample_count: int
+    _epoch_sample_count: int #当前 epoch 内已产出的样本数
 
     _savable_fields = (
         "_worker_rng",
@@ -115,7 +115,7 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
 
         # Store the slices for all workers
         # The slices for the current worker, will have to be extracted from this list later
-        self.workers_slice_offsets = workers_sample_slice_offsets
+        self.workers_slice_offsets = workers_sample_slice_offsets #所有 worker 的切片偏移，workers_slice_offsets[worker_id] 取出该 worker 要处理的切片范围列表
         self.slice_offsets = None
 
         self.reset_state_own()
@@ -149,10 +149,11 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
         """Yields the indexes to slice offsets once. Possibly shuffles the list."""
         assert self.slice_offsets is not None
 
-        num_slices = len(self.slice_offsets) - 1
+        num_slices = len(self.slice_offsets) - 1 #确定 slice 总数
         slices_offset = self._pending_slices_offset
 
-        if self.shuffle_over_epochs is None:
+        #根据 shuffle_over_epochs 生成列表
+        if self.shuffle_over_epochs is None: #None → 顺序 [0, 1, 2, ...]
             # No shuffling
             res_list = list(range(num_slices))
             if slices_offset is None:
@@ -171,18 +172,18 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
                 rng = WorkerRng(self.worker_config)
                 rng.restore_state(self._pending_slices_rng_state)
 
-            if self.shuffle_over_epochs == -1:
+            if self.shuffle_over_epochs == -1: #shuffle_over_epochs = -1（放回抽样，无限 epoch）
                 # Shuffle with replacement (i.e. infinite epochs), effectively return as many slices
                 # as are required for parallel slice iterators.
                 # Next slices are drawn in the _slices_iter.
-                res_list = [rng.randbelow(num_slices) for _ in range(self.parallel_slice_iters)]
-            elif self.shuffle_over_epochs >= 1:
+                res_list = [rng.randbelow(num_slices) for _ in range(self.parallel_slice_iters)] #直接随机抽 parallel_slice_iters 个 slice 索引。不在这个列表里维护所有 slice，而是只抽够填满 active 槽位，后面的在主循环中边消耗边抽（_slices_iter 第 329-331 行）
+            elif self.shuffle_over_epochs >= 1: #shuffle_over_epochs >= 1（不重复 shuffle）
                 # Shuffle without replacement (potentially over multiple epochs)
-                res_list = rng.shuffle(list(range(num_slices)) * self.shuffle_over_epochs)
+                res_list = rng.shuffle(list(range(num_slices)) * self.shuffle_over_epochs) #将 [0, 1, ..., num_slices-1] 重复 N 遍后整体 shuffle。例如 shuffle_over_epochs=3，4 个 slice：[0,1,2,3,0,1,2,3,0,1,2,3] 打乱 → 跨 3 个 epoch 不重复。
             else:
                 raise ValueError(f"Invalid shuffle_over_epochs: {self.shuffle_over_epochs}")
         # Reverse, such that pop returns the first element (in O(1) time)
-        res_list.reverse()
+        res_list.reverse() # reverse 让 pop 取出第一个元素
         # Skip restored slice list already processed slices
         assert slices_offset is not None
         self._pending_slices_offset = slices_offset
@@ -190,7 +191,7 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
             # Those have already been popped in the current state
             del res_list[-slices_offset:]
         # Set the pending slices
-        self._pending_slice_indexes = res_list
+        self._pending_slice_indexes = res_list # 保存到 self._pending_slice_indexes 里
         return res_list
 
     def _slices_iter(self) -> Generator[RawSampleData, None, None]:
@@ -277,15 +278,15 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
             # List of slice iterators, always of length `parallel_slice_iters`. May contain `None`.
             active_slices.clear()
             # Fill up the slice iterators
-            while len(pending_slice_indexes) > 0 and len(active_slices) < self.parallel_slice_iters:
+            while len(pending_slice_indexes) > 0 and len(active_slices) < self.parallel_slice_iters: ## 从 reverse 后的 pending 列表中 pop，填满 parallel_slice_iters 个槽位
                 slice_index = pending_slice_indexes.pop()
-                self._pending_slices_offset += 1
-                slice_state = slice_at(slice_index)
+                self._pending_slices_offset += 1 # 计数已 pop 的数量
+                slice_state = slice_at(slice_index) # 创建 SliceState(index=idx, current=slice_offsets[idx])
                 active_slice_probs[len(active_slices)] = (
                     self.slice_offsets[slice_state.index + 1]
                     - self.slice_offsets[slice_state.index]
-                )
-                active_slices.append(slice_state)
+                )# 计算这个 slice 的大小作为权重（权重代表slice被选取的可能性），单位是样本数量
+                active_slices.append(slice_state)#加入到 active_slices 中
             # Fill up the slice iterators with None
             for _ in range(len(active_slices), self.parallel_slice_iters):
                 active_slices.append(None)
@@ -302,33 +303,33 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
         #         )
 
         # Iterate over the slice iterators while there is an iterator left
-        while torch.count_nonzero(active_slice_probs).item() > 0:
-            if self.shuffle_over_epochs is None:
+        while torch.count_nonzero(active_slice_probs).item() > 0: #只要还有任何一个 active slot 的权重 > 0（即还有样本可读），循环继续。
+            if self.shuffle_over_epochs is None: #eval 模式（不 shuffle）：parallel_slice_iters 必须为 1，直接选唯一的 slot
                 # No shuffling, deterministic order, always the same
                 assert self.parallel_slice_iters == 1
                 slice_idx = 0
-            else:
+            else:#training 模式：按每个 slice 的大小（剩余样本数）加权随机选
                 # Take a random slice iterator
-                slice_idx = self._worker_rng.choice_idx(active_slice_probs)
-            slice_state = active_slices[slice_idx]
+                slice_idx = self._worker_rng.choice_idx(active_slice_probs) #根据权重，被选定的slice序号
+            slice_state = active_slices[slice_idx] #获取选定的slice状态
             assert slice_state is not None
-            sample = self._get_sample(slice_state.current)
+            sample = self._get_sample(slice_state.current)  #读当前游标位置的样本
             # print(f"Read sample at {slice_state.current} -> {'None' if sample is None or sample.data[0] is None else sample.data[0]['__key__']}")
-            slice_state.current += 1
-            self._sample_count += 1
-            self._epoch_sample_count += 1
-            if slice_state.current >= self.slice_offsets[slice_state.index + 1]:
+            slice_state.current += 1 # 游标前进
+            self._sample_count += 1 # 累计计数 +1
+            self._epoch_sample_count += 1 # 当前 epoch 计数 +1
+            if slice_state.current >= self.slice_offsets[slice_state.index + 1]: #如果当前 slice 耗尽，补充/归零
                 # Iterator exhausted -> take next / remove from list
                 if len(pending_slice_indexes) > 0 or self.shuffle_over_epochs == -1:
-                    if len(pending_slice_indexes) > 0:
+                    if len(pending_slice_indexes) > 0: #pending 里还有 slice
                         # Take the next slice (without replacement)
-                        next_idx = pending_slice_indexes.pop()
+                        next_idx = pending_slice_indexes.pop() #pop() 取出下一个 slice 替换当前槽位
                         assert self._pending_slices_offset is not None
                         self._pending_slices_offset += 1
-                    else:
+                    else: #pending 为空但 shuffle_over_epochs == -1（放回抽样）
                         # Randomly select a new slice directly (with replacement)
                         num_slices = len(self.slice_offsets) - 1
-                        next_idx = self._worker_rng.randbelow(num_slices)
+                        next_idx = self._worker_rng.randbelow(num_slices) #直接 randbelow(num_slices) 随机选一个新的 slice
                     next_slice_state = slice_at(next_idx)
                     active_slice_probs[slice_idx] = (
                         self.slice_offsets[next_slice_state.index + 1]
@@ -341,7 +342,7 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
                     #     f"taking next slice {next_slice_state} [{slice_offsets[next_slice_state.index]}, {slice_offsets[next_slice_state.index + 1]}], "
                     #     f"{len(pending_slice_indexes)} slices left, probs={active_slice_probs.tolist()}"
                     # )
-                else:
+                else: #pending 为空且不是放回抽样。此槽位置零，标记为 None，不再使用
                     active_slice_probs[slice_idx] = 0
                     active_slices[slice_idx] = None
                     # print(
@@ -362,7 +363,7 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
                             "probs": active_slice_probs.tolist(),
                         }
                     )
-            if sample.data[0] is not None:
+            if sample.data[0] is not None: #产出样本
                 # Otherwise the sample was skipped.
                 if self.worker_config.should_log(level=1):
                     self.worker_config.worker_log(
@@ -394,15 +395,15 @@ class WebdatasetSampleLoaderDataset(SavableDataset[RawSampleData]):
             )
 
         # Epoch has finished, reset states.
-        self._epoch_count += 1
-        self._epoch_sample_count = 0
+        self._epoch_count += 1 #一个epoch结束了，计数 +1
+        self._epoch_sample_count = 0 #置 0，准备下一个 epoch
         self._pending_slice_indexes = None
         self._pending_slices_offset = None
         # print(
         #     f"slice iters exhausted for {self.worker_config.rank}:{self.worker_config.rank_worker_id()} after {cnt} samples"
         # )
 
-    def len_worker(self, worker_idx: int | None = None) -> int:
+    def len_worker(self, worker_idx: int | None = None) -> int: #获取当前worker进程对这个数据集的样本数量
         if worker_idx is None:
             self.worker_config.assert_worker()
             worker_idx = self.worker_config.rank_worker_id()

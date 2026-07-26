@@ -11,15 +11,15 @@ T_sample = TypeVar("T_sample")
 
 
 class EpochizeDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample]):
-    """
+    """ #内部数据集是无限的（RepeatDataset(repeats=None)），next(_active_iter) 永远不会抛 StopIteration。但 EpochizeDataset 自己决定 yield 多少条就停
     Uses the base dataset, and creates one epoch, which has length samples. Keeps the underlying
     dataset iterator alive over epochs (i.e. if it is an infinite dataset, it will keep the state).
     Repeats the underlying dataset if the iterator is exhausted.
     """
 
-    length: int
-    _active_iter: Optional[Iterator[T_sample]]
-    _offset: int
+    length: int  #length 是每个DP rank 在这个 epoch 需要 yield 的总数据量，不包括多个 DP rank 的总和
+    _active_iter: Optional[Iterator[T_sample]] #内部数据集的迭代器，创建一次，跨 “epoch” 复用
+    _offset: int #当前 epoch 的游标（0 ~ local_length-1）
 
     _savable_fields = ("_offset",)
 
@@ -51,11 +51,11 @@ class EpochizeDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample])
     def __iter__(self) -> Iterator[T_sample]:
         # Compute the local length for this worker, i.e. all worker's lengths sum up to the total
 
-        if self.worker_config.num_workers <= 1:
+        if self.worker_config.num_workers <= 1: #计算当前 worker需要处理 的 local_length
             local_length = self.length
         else:
-            local_length = self.length // self.worker_config.num_workers
-            if self.worker_config.rank_worker_id() < self.length % self.worker_config.num_workers:
+            local_length = self.length // self.worker_config.num_workers #num_workers 是单个 rank 内部的 DataLoader worker 数，不包括别的 DP rank
+            if self.worker_config.rank_worker_id() < self.length % self.worker_config.num_workers: # 余数分配，前几个 worker 多一条
                 local_length += 1
 
         if self.worker_config.should_log(level=2):
@@ -70,15 +70,15 @@ class EpochizeDataset(BaseWrapperDataset[T_sample, T_sample], Generic[T_sample])
                 }
             )
 
-        offset_range = list(range(self._offset, local_length))
+        offset_range = list(range(self._offset, local_length)) #计算要 yield 的范围：[_offset, local_length)
 
         # Only iterate if there are samples to iterate
         if len(offset_range) > 0:
-            if self._active_iter is None:
+            if self._active_iter is None: #首次创建迭代器，后续复用
                 self._active_iter = iter(self.dataset)
 
-            for idx in offset_range:
-                self._offset = (idx + 1) % local_length
+            for idx in offset_range:#迭代[_offset, local_length)这些样本，然后迭代结束（假装达到了迭代尾部，人为设置epoch范围）。下次iter的时候继续用_active_iter，读取下一个epoch数据（不同的数据）
+                self._offset = (idx + 1) % local_length # 推进并自动回绕
                 try:
                     sample = next(self._active_iter)
                 except StopIteration:

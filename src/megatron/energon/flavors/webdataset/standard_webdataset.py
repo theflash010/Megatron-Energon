@@ -56,7 +56,7 @@ class StandardWebdatasetFactory(DefaultDecoderWebdatasetFactory[T_sample], Gener
             subset: If specified, the dataset will be subsetted.
             split_config: Config file to use for shard split definitions.
         """
-        self.__sample_type__ = sample_type
+        self.__sample_type__ = sample_type #确定sample_type
         assert issubclass(sample_type, Sample), (
             f"sample_type must be subclass of megatron.energon.Sample, got {sample_type.__qualname__}"
         )

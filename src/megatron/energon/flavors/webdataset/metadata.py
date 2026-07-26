@@ -56,17 +56,17 @@ class WebdatasetMeta:
             split_part: Which part to load (e.g. 'train', 'val', 'test').
             split_config: Config file to use for shard split definitions.
         """
-        if split_config is None:
+        if split_config is None: #设置默认 split 配置文件名
             split_config = "split.yaml"
 
         parser = JsonParser(strict=True)
-        info_object = get_dataset_info(path)
+        info_object = get_dataset_info(path) # 解析 .info.json → WebdatasetInfo，包含每个 shard 的样本数
 
         info = parser.raw_to_typed(
             info_object,
             WebdatasetInfo,
         )
-        try:
+        try: #解析 split 配置文件 → WebdatasetSplits，包括split_parts（key=split 名（"train"/"val"/"test"），value=该 split 包含的文件名列表（可含花括号通配符，如 "shard_{000..099}.tar"）），exclude（要排除的条目列表）
             splits = parser.raw_to_typed(
                 load_yaml_json(path / MAIN_FOLDER_NAME / split_config),
                 WebdatasetSplits,
@@ -85,19 +85,19 @@ class WebdatasetMeta:
             excluded
             for excluded in splits.exclude
             for excluded in braceexpand.braceexpand(excluded)
-        }
+        } #展开排除列表
 
-        all_split_part_files = [
+        all_split_part_files = [ #展开当前 split 的文件名列表
             name
-            for name in splits.split_parts[split_part]
-            for name in braceexpand.braceexpand(name)
+            for name in splits.split_parts[split_part]  # 取当前 split 的文件名（可能含通配符）
+            for name in braceexpand.braceexpand(name) # 展开通配
         ]
 
-        split_part_files = [name for name in all_split_part_files if name not in split_excludes]
+        split_part_files = [name for name in all_split_part_files if name not in split_excludes] #过滤掉 exclude 的shard文件
         if len(split_part_files) == 0:
             raise EmptyDatasetError(f"No shards found in split part {split_part!r}")
         return WebdatasetMeta(
-            sample_excludes={excluded for excluded in split_excludes if "/" in excluded},
+            sample_excludes={excluded for excluded in split_excludes if "/" in excluded}, #筛选出排除数据中shard名/样本索引 的格式
             shards=[
                 ShardInfo(
                     name=name,
@@ -105,9 +105,9 @@ class WebdatasetMeta:
                     count=info.shard_counts[name],
                 )
                 for name in split_part_files
-            ],
-            split_part_files=all_split_part_files,
-            info_shard_files=list(info.shard_counts.keys()),
+            ],# 只构建当前 split 的 shard
+            split_part_files=all_split_part_files, ## 含排除项的完整文件列表
+            info_shard_files=list(info.shard_counts.keys()), ## 所有 split 的 shard
         )
 
 
@@ -163,7 +163,7 @@ def get_dataset_type(path: EPath) -> EnergonDatasetType:
         if path.name.endswith(".jsonl"):
             return EnergonDatasetType.JSONL
         elif path.name.endswith(".yaml"):
-            return EnergonDatasetType.METADATASET # yaml后缀的配置文件（比如混合数据集）
+            return EnergonDatasetType.METADATASET #yaml后缀的配置文件（比如混合数据集）
         else:
             return EnergonDatasetType.INVALID
     elif check_dataset_info_present(path):

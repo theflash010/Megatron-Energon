@@ -35,9 +35,9 @@ T_batch_sample = TypeVar("T_batch_sample", covariant=True)
 
 @edataclass
 class Bucket(Savable, Generic[T_batch_sample]):
-    batch_size: int
+    batch_size: int # 这个桶的目标 batch_size
 
-    samples: SavableSampleBuffer[T_batch_sample]
+    samples: SavableSampleBuffer[T_batch_sample] # 累积同一个bucket的样本的缓冲区
 
     def save_state(self) -> FlexState:
         return FlexState(
@@ -61,12 +61,12 @@ class GroupBatchDataset(
     """
 
     dataset: SavableDataset[T_batch_sample]
-    sample_group_key: Callable[[T_batch_sample], Tuple[Hashable, Optional[int]]] #样本分group时候调用的判读函数。每来一个样本时调用，决定这个样本去哪个桶、桶里 batch 多大，具体逻辑可以看这个类__iter__的调用
-    batcher: Callable[[List[T_batch_sample]], T_batch]
+    sample_group_key: Callable[[T_batch_sample], Tuple[Hashable, Optional[int]]] #用户函数：(样本) → (bucket_key, batch_size)，决定样本进哪个桶、桶的 batch_size 多大。样本分group时候调用的判读函数。每来一个样本时调用，决定这个样本去哪个桶、桶里 batch 多大，具体逻辑可以看这个类__iter__的调用
+    batcher: Callable[[List[T_batch_sample]], T_batch] #用户函数：(样本列表) → batch，将一个桶的样本打包为 batch
     drop_last: bool
     _group_key_sample_index: SampleIndex
     _batch_sample_index: SampleIndex
-    _buckets: Dict[Hashable, Bucket[T_batch_sample]]
+    _buckets: Dict[Hashable, Bucket[T_batch_sample]] #桶字典，key 是 sample_group_key 返回的标识，value 是 Bucket 对象
     _batch_failure_handler: ErrorContext
     _group_key_failure_handler: ErrorContext
 
@@ -96,7 +96,7 @@ class GroupBatchDataset(
             worker_config: Configuration for the workers.
         """
         super().__init__(dataset, worker_config=worker_config)
-        self.fixed_batch_size = fixed_batch_size
+        self.fixed_batch_size = fixed_batch_size #统一 batch_size模式使用，全局固定 batch_size。如果设为 None 则由 sample_group_key 决定每个bucket的 batch_size
         self.sample_group_key = sample_group_key
         self.batcher = batcher
         self.batcher_stateless = batcher_stateless
@@ -155,13 +155,13 @@ class GroupBatchDataset(
             # print(f"[wrk={worker_idx}, s={self._batch_sample_index.current_idx}] flushed: len(batch)={len(batch_items)} len(samples)={len(bucket.samples)}\n", end="")
             with self._batch_failure_handler.handle_errors(batch_items):
                 with self._batch_sample_index.ctx() as sample_idx:
-                    batch_sample = self.batcher(batch_items) #调用定义的 batch 函数
+                    batch_sample = self.batcher(batch_items) #调用定义的 batch 函数， batcher 打包成一个batch输出
                     assert not isinstance(batch_sample, Generator), (
                         f"Batcher {self.batcher} returned a generator, which is not supported for grouped batching yet."
                     )
                 self._batch_failure_handler.reset()
                 set_sample_restore_key(batch_sample, sample_idx, *sample_restore_keys, src=self)
-                yield batch_sample #生成器输出
+                yield batch_sample #吐出一个batch
 
         # Add samples to the buckets
         for sample in self.dataset:
@@ -172,7 +172,7 @@ class GroupBatchDataset(
                         f"A sample in group for key {bucket_key} returned batch size {batch_size}, but fixed "
                         f"batch size is set to {self.fixed_batch_size}. One of the two should be None."
                     )
-                    if self.fixed_batch_size is not None:
+                    if self.fixed_batch_size is not None: #统一 batch_size，用 fixed_batch_size 覆盖 batch_size
                         batch_size = self.fixed_batch_size
             bucket = buckets.get(bucket_key) #从已有的buckets中找有没有符合bucket_key的bucket
             if bucket is None: #如果没有就新建bucket，加入到buckets中
@@ -186,10 +186,10 @@ class GroupBatchDataset(
                     f"Got different batch size for group {bucket_key}: {bucket.batch_size} != {batch_size}."
                 )
             bucket.samples.append(sample) #将这个样本加入到bucket中
-            if bucket.samples.len_worker() >= bucket.batch_size:
+            if bucket.samples.len_worker() >= bucket.batch_size: #如果添加完样本之后数量达到了这个bucket的batch size，就输出这个bucket的batch
                 yield from flush(bucket)
         # Flush out last samples
-        if not self.drop_last:
+        if not self.drop_last: #drop_last是否丢弃每个桶不足 batch_size 的残量，如果drop_last=False，则不丢弃，把每个桶的残余样本打包成batch输出
             for bucket in buckets.values(): #对每个bucket遍历
                 if bucket.samples.len_worker() > 0:
                     yield from flush(bucket) #按照bucket的batch_size输出batch

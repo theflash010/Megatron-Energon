@@ -31,11 +31,11 @@ class WorkerConfig:
     """
 
     #: The data parallel rank/id of the current process.
-    rank: int
+    rank: int #当前进程的数据并行rank/id
     #: The total number of data parallel processes.
-    world_size: int
+    world_size: int #数据并行的总进程数
     #: The number of workers per rank. May be 0 to disable worker processes.
-    num_workers: int
+    num_workers: int #每个rank的worker数量
 
     #: If not using all ranks for data parallel, set this to the corresponding group.
     data_parallel_group: Optional[torch.distributed.ProcessGroup] = None
@@ -55,7 +55,7 @@ class WorkerConfig:
     seed_offset: int = 0
 
     #: The path to the debug file for the current worker. Should contain "{worker_id}" and "{pid}"
-    # to separate the workers.
+    # to separate the workers. #debug相关成员变量
     worker_debug_path: Optional[str] = None
     #: Log level for worker logging.
     worker_log_level: int = 0
@@ -184,7 +184,7 @@ class WorkerConfig:
         if self._worker_override_global_rank:
             assert self.worker_id_offset == 0
             return self._worker_override_global_rank % self.num_workers
-        worker_info = torch.utils.data.get_worker_info()
+        worker_info = torch.utils.data.get_worker_info() #当 DataLoader(num_workers=N) 启动时，每个 worker 子进程启动后，PyTorch 会自动设置进程内的线程/进程局部变量，把 worker_info 挂到当前线程/进程的上下文里
         if worker_info is None:
             return self.worker_id_offset
         assert worker_info.num_workers == self.num_workers

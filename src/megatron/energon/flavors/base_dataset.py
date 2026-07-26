@@ -422,7 +422,7 @@ class BaseCoreDatasetFactory(Generic[T_sample], ABC):
 
 def add_sample_restore_key(
     sample: T_sample, *key: Union[int, str], src: Any, fail_otherwise: bool = False
-) -> T_sample:
+) -> T_sample: #对sample添加一些其他信息，比如数据来自哪个数据集等
     """Adds a key to a sample. The sample must be a valid `Sample` or dict containing
     __restore_key__, which is a tuple of keys that can be used to restore the inner sample.
     This restore key is prepended with the `key`."""

@@ -68,7 +68,7 @@ def get_dataset_from_config(
     sample_type: Optional[Type[T_sample]] = None,
     **kwargs,
 ) -> BaseCoreDatasetFactory[T_sample]:
-    """
+    """ #只构建单个数据集工厂，多数据集 metadataset的叶子数据集被构建数据集工厂
     Gets a dataset from a config path or path to a jsonl file.
 
     Args:

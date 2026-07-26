@@ -20,7 +20,7 @@ class DefaultDecoderWebdatasetFactory(DefaultGenericWebdatasetFactory[T_sample],
     """
 
     # The webdataset decoder function, if to be applied
-    _decoder: Optional[SampleDecoder]
+    _decoder: Optional[SampleDecoder] #_decoder成员
 
     def __init__(
         self,
@@ -37,7 +37,7 @@ class DefaultDecoderWebdatasetFactory(DefaultGenericWebdatasetFactory[T_sample],
             decoder: If provided, use this decoder, otherwise just load raw bytes.
             **kwargs: Args passed to parent constructor
         """
-        self._decoder = decoder
+        self._decoder = decoder #确定decoder
         super().__init__(path, **kwargs)
 
     def load_sample(self, sample: FilteredSample) -> T_sample:

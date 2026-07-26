@@ -684,7 +684,7 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
         n_checkpoints: Optional[int] = None,
         gc_collect_every_n_steps: int = GC_DEFAULT_EVERY_N_ITER,
         gc_freeze_at_start: bool = True,
-        prefetch_factor: int = 2,
+        prefetch_factor: int = 2, ## torch DataLoader 预取因子
         cache_pool: Optional[CachePool] = None,
         watchdog_timeout_seconds: Optional[float] = 60,
         watchdog_initial_timeout_seconds: Optional[float] = None,
@@ -719,7 +719,7 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
             fail_on_timeout: If True, stops the whole process upon timeout, after printing a stack trace.
         """
         self.worker_config = dataset.worker_config
-        self.id = self.next_id()
+        self.id = self.next_id() #分配id
 
         dataset = WatchdogDataset(
             dataset,
@@ -737,12 +737,12 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
                 freeze=gc_freeze_at_start,
             )
 
-        self.cmd_queues = [multiprocessing.Queue() for _ in range(self.worker_config.num_workers)]
+        self.cmd_queues = [multiprocessing.Queue() for _ in range(self.worker_config.num_workers)] #把 dataset 包一层 SavableDatasetWrapper，让 wrapper 内部通过 cmd_queues / result_queues 实现 checkpoint 通信
         self.result_queues = [
             multiprocessing.Queue() for _ in range(self.worker_config.num_workers)
         ]
 
-        num_procs = max(self.worker_config.num_workers, 1)
+        num_procs = max(self.worker_config.num_workers, 1) #worker进程数量，这里还没有开启多个子worker进程
 
         if n_checkpoints is None:
             n_checkpoints = prefetch_factor * num_procs + 1
@@ -766,13 +766,13 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
                 dataset, self.worker_config, cache_pool=cache_pool
             )
 
-        self._worker_sample_counters = [-1] * num_procs
+        self._worker_sample_counters = [-1] * num_procs #样本计数器初始化，每个 Worker 初始化为 -1（表示尚未产出任何样本）。
 
         kwargs = {}
-        if self.worker_config.num_workers > 0:
-            kwargs["persistent_workers"] = True
-            kwargs["prefetch_factor"] = prefetch_factor
-            kwargs["multiprocessing_context"] = "fork"
+        if self.worker_config.num_workers > 0: #多 Worker 时
+            kwargs["persistent_workers"] = True #persistent_workers=True：Worker 跨 epoch 持久化（不销毁重建，energon用软epoch）
+            kwargs["prefetch_factor"] = prefetch_factor #prefetch_factor：每个 Worker 预取 batch 数
+            kwargs["multiprocessing_context"] = "fork" #fork 方式创建子进程
 
         # Assert that prefetch_factor works well with num_checkpoints.
         # This ensures that the oldest checkpoint is old enough to cover
@@ -785,15 +785,15 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
         # Compute seeds for each worker, based on current rank
         seed_per_worker = [
             self.worker_config.worker_seed(i) for i in range(self.worker_config.num_workers)
-        ]
+        ]#为每个 Worker 生成独立种子
 
-        super().__init__(
+        super().__init__( #初始化 torch DataLoader 
             dataset,
-            batch_size=None,
-            shuffle=False,
-            num_workers=self.worker_config.num_workers,
-            pin_memory=True,
-            worker_init_fn=partial(_init_worker, seed_per_worker),
+            batch_size=None, #batch_size=None：不在此层做 batching（由 dataset 内部的 BatchDataset 处理）
+            shuffle=False, #shuffle=False：不打乱（shuffle 由 dataset pipeline 内部负责）
+            num_workers=self.worker_config.num_workers, #该dp rank的worker数量
+            pin_memory=True, #加速 GPU 传输
+            worker_init_fn=partial(_init_worker, seed_per_worker), #为每个 Worker 设置独立种子
             **kwargs,
         )
 
@@ -820,8 +820,8 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
 
     def _epoch_iter(self):
         """Iterator for one epoch, i.e. until the inner dataset raises StopIteration."""
-        iter_idx = 0
-        id = self.next_id()
+        iter_idx = 0 #当前这次 _epoch_iter() 里 yield 的第几个样本，从 0 递增。日志里用来标进度。
+        id = self.next_id() #next_id() 从类变量 _next_id 取一个自增 ID，标记"这是第几次调用 _epoch_iter"。日志里用来区分不同 epoch 的迭代记录。
         if self.worker_config.should_log(level=1):
             self.worker_config.worker_log(
                 {
@@ -833,10 +833,10 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
                 }
             )
         try:
-            for worker_id, sample_idx, sample in super().__iter__():
-                self._worker_sample_counters[worker_id] = sample_idx
+            for worker_id, sample_idx, sample in super().__iter__(): #Energon 的 dataset 在构造每个样本时附带了两层元数据，所以每次 yield 的不是纯样本，而是一个三元组。worker_id：这个样本是哪个 worker 产出的（0 到 N-1）。sample_idx：这个样本在这个 worker 内的序号（从 0 递增）。sample：真正的数据 batch
+                self._worker_sample_counters[worker_id] = sample_idx #维护一个数组，记录每个 worker 最近一次 yield 的样本序号。
                 # If the next sample will be from the first worker, we can safely resume
-                self._next_worker_id = (worker_id + 1) % max(self.num_workers, 1)
+                self._next_worker_id = (worker_id + 1) % max(self.num_workers, 1) #计算"下一个应该来的 worker 是几号"。假设当前收到 worker_2，那 _next_worker_id = 3。因为在 in_order=True 下 DataLoader 按 worker 轮序返回数据，这个值用于 checkpoint 恢复时的 worker 偏移对齐：恢复时要知道上次停在哪，把所有 worker 的 worker_id 做一个偏移，保证数据不重复不遗漏。
                 # self._debugf.write(
                 #     f"[w={worker_id}, s={sample_idx}] {self._sample_str(sample)}\n"
                 # )
@@ -860,12 +860,12 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
                             **({} if keys is None else {"keys": keys}),
                         }
                     )
-                self._sample_idx += 1
-                self._global_sample_idx += 1
-                iter_idx += 1
+                self._sample_idx += 1 # 当前 epoch 内的样本数
+                self._global_sample_idx += 1 # 全局累计样本数
+                iter_idx += 1 # 本次 _epoch_iter 内的样本数（日志用）
                 yield sample
-            self._epoch_iterator = None
-            self._next_worker_id = 0
+            self._epoch_iterator = None # 置空，下个 epoch 重建
+            self._next_worker_id = 0 # 归零，下个 epoch 从 worker_0 开始
         finally:
             if self.worker_config.should_log(level=1):
                 self.worker_config.worker_log(
@@ -883,10 +883,10 @@ class SavableDataLoader(DataLoader[T], Generic[T]):
             # Always keep same iterator alive, as long as it yields data
             if self._epoch_iterator is None:
                 self._epoch_iterator = self._epoch_iter()
-                self._sample_idx = 0
+                self._sample_idx = 0 #当前 epoch 内的样本计数，每个新 epoch 归零
                 self._has_workers = True
                 # print("New Iterator", self._persistent_iterator)
-            return self._epoch_iterator
+            return self._epoch_iterator # 复用，不重建
         else:
             return self._epoch_iter()
 

@@ -90,13 +90,13 @@ class DefaultGenericWebdatasetFactory(BaseWebdatasetFactory[T_sample], Generic[T
             parts = set(access[0] for options in fields.values() for access in options)
             part_filter = lambda part: part in parts #从所有字段访问路径中提取第一级（文件扩展名），生成过滤器。如parts={json, jpg}
         inner_sample_loader = self._sample_loader # 保存原来的 loader
-        self._sample_loader = lambda sample: {
+        self._sample_loader = lambda sample: {#除了原来的inner_sample_loader逻辑，这里还加一些映射逻辑，最终生成完整的_sample_loader（作用：将decode完的样本转换为self.__sample_type__类型的对象）
             "__key__": sample["__key__"], # 原始样本唯一标识
             **inner_sample_loader(sample), # 用户数据（来自 field_map 或自定义 loader）
             "__restore_key__": sample["__restore_key__"],
             "__subflavors__": self.subflavors,# 注入的元数据（如数据集来源、标签等）
             "__sources__": sample["__sources__"], # 数据源信息
-        } # 替换为包装后的版本
+        }#生成最终的_sample_loader
         super().__init__(path, **kwargs, part_filter=part_filter)
         self.subflavors = subflavors or {}
 
